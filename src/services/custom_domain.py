@@ -326,8 +326,9 @@ class CustomDomainEmailService(BaseEmailService):
                     if "openai" not in sender and "openai" not in content.lower():
                         continue
 
-                    # 提取验证码
-                    match = re.search(pattern, content)
+                    # 提取验证码 过滤掉邮箱
+                    email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+                    match = re.search(pattern, re.sub(email_pattern, "", content))
                     if match:
                         code = match.group(1)
                         logger.info(f"从自定义域名邮箱 {email} 找到验证码: {code}")
