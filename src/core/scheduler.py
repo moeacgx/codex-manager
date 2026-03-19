@@ -3,6 +3,7 @@ import logging
 import uuid
 from typing import Any, List, Optional
 from datetime import datetime
+from collections import deque
 
 from curl_cffi import requests as cffi_requests
 
@@ -13,6 +14,15 @@ from .upload.cpa_upload import _normalize_cpa_auth_files_url, _build_cpa_headers
 from ..web.routes.registration import run_batch_registration
 
 logger = logging.getLogger(__name__)
+
+# 系统日志缓冲池（最多保留500条）
+global_log_counter = 0
+system_logs = deque(maxlen=500)
+
+def append_system_log(level: str, msg: str):
+    global global_log_counter
+    global_log_counter += 1
+    system_logs.append({"id": global_log_counter, "level": level, "msg": f"[系统自动任务] {msg}"})
 
 DEFAULT_CLIPROXY_UA = "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal"
 
@@ -70,13 +80,19 @@ def test_cliproxy_auth_file(item: dict, api_url: str, api_token: str) -> tuple[b
 
     settings = get_settings()
     test_url = settings.cpa_auto_check_test_url or "https://chatgpt.com/backend-api/wham/usage"
+    test_model = settings.cpa_auto_check_test_model or "gpt-5.2-codex"
+    
+    method = "POST" if (test_model and "usage" not in test_url.lower()) else "GET"
 
     payload = {
         "authIndex": auth_index,
-        "method": "GET",
+        "method": method,
         "url": test_url,
         "header": call_header,
     }
+    
+    if test_model:
+        payload["body"] = {"model": test_model}
 
     base_url = (api_url or "").strip().rstrip("/")
     if base_url.endswith("/v0/management"):
@@ -121,24 +137,37 @@ async def trigger_auto_registration(count: int, cpa_service_id: int):
     task_uuids = [str(uuid.uuid4()) for _ in range(count)]
     batch_id = str(uuid.uuid4())
 
+    settings = get_settings()
+    
+    email_service_type = "temp_mail"
+    email_service_id = None
+    
+    # 优先使用配置中保存的邮箱服务
+    saved_email_svc = settings.cpa_auto_register_email_service
+    if saved_email_svc and ':' in saved_email_svc:
+        parts = saved_email_svc.split(':')
+        email_service_type = parts[0]
+        if parts[1] != 'default':
+            try:
+                email_service_id = int(parts[1])
+            except:
+                pass
+    else:
+        with get_db() as db:
+            enabled_services = crud.get_email_services(db, enabled=True)
+            if enabled_services:
+                best_svc = enabled_services[0]
+                email_service_type = best_svc.service_type
+                email_service_id = best_svc.id
+
     with get_db() as db:
         for task_uuid in task_uuids:
             crud.create_registration_task(
                 db,
                 task_uuid=task_uuid,
-                email_service_id=None,
+                email_service_id=email_service_id,
                 proxy=None
             )
-
-    settings = get_settings()
-
-    # 确定邮箱服务优先级
-    email_service_type = "tempmail"
-    if settings.email_service_priority:
-        # Sort priority dict by value and get first key
-        sorted_priorities = sorted(settings.email_service_priority.items(), key=lambda x: x[1])
-        if sorted_priorities:
-            email_service_type = sorted_priorities[0][0]
 
     asyncio.create_task(
         run_batch_registration(
@@ -147,7 +176,7 @@ async def trigger_auto_registration(count: int, cpa_service_id: int):
             email_service_type=email_service_type,
             proxy=None,
             email_service_config=None,
-            email_service_id=None,
+            email_service_id=email_service_id,
             interval_min=settings.registration_sleep_min,
             interval_max=settings.registration_sleep_max,
             concurrency=2, # auto register uses a limit concurrency
@@ -158,16 +187,16 @@ async def trigger_auto_registration(count: int, cpa_service_id: int):
     )
 
 
-def check_cpa_services_job(manual_logs: list = None):
+def check_cpa_services_job(main_loop, manual_logs: list = None):
     """定时检查所有启用的 CPA 服务"""
     settings = get_settings()
     if not settings.cpa_auto_check_enabled and manual_logs is None: # if manual trigger, ignore enabled flag
         return
 
-    def _log(msg, level='info'):
-        if level == 'info': logger.info(msg)
-        elif level == 'warning': logger.warning(msg)
-        elif level == 'error': logger.error(msg)
+    def _log(msg: str, level: str = 'info'):
+        log_func = getattr(logger, level, logger.info)
+        log_func(msg)
+        append_system_log(level, msg)
         if manual_logs is not None:
             manual_logs.append(f"[{level.upper()}] {msg}")
 
@@ -175,18 +204,44 @@ def check_cpa_services_job(manual_logs: list = None):
     try:
         with get_db() as db:
             services = crud.get_cpa_services(db, enabled=True)
+            if not services:
+                _log("警告：当前没有任何启用的 CPA 服务！请先配置并启用 CPA 服务。", "warning")
             for svc in services:
+                valid_count = 0
+                fetch_success = False
                 try:
                     _log(f"检查 CPA 服务: {svc.name}")
                     files = fetch_cliproxy_auth_files(svc.api_url, svc.api_token)
+                    fetch_success = True
                     if not files:
                         _log(f"CPA 服务 {svc.name} 没有凭证", 'warning')
-                        valid_count = 0
                     else:
                         _log(f"CPA 服务 {svc.name} 获取到 {len(files)} 个凭证")
-                        valid_count = 0
+                        
+                        has_triggered_early = False
+                        if settings.cpa_auto_register_enabled:
+                            threshold = settings.cpa_auto_register_threshold
+                            if len(files) < threshold:
+                                _log(f"当前凭证总数 {len(files)} 已少于阈值 {threshold}，无需等待测活完毕，立即补货！")
+                                to_register = settings.cpa_auto_register_batch_count
+                                if to_register > 0:
+                                    try:
+                                        if main_loop:
+                                            asyncio.run_coroutine_threadsafe(
+                                                trigger_auto_registration(to_register, svc.id),
+                                                main_loop
+                                            )
+                                        has_triggered_early = True
+                                    except Exception as e:
+                                        _log(f"调度早间补偿任务失败: {e}", 'error')
+                        
+                        _log(f"开始逐一穿透测试这 {len(files)} 个凭证的健康状态，过程可能较长，请耐心等待...")
                         invalid_count = 0
                         for item in files:
+                            if settings.cpa_auto_check_sleep_seconds > 0:
+                                import time
+                                time.sleep(settings.cpa_auto_check_sleep_seconds)
+
                             name = str(item.get("name", "")).strip()
                             if not name:
                                 continue
@@ -209,25 +264,34 @@ def check_cpa_services_job(manual_logs: list = None):
                                 
                         _log(f"CPA 服务 {svc.name} 检查完成，有效: {valid_count}，剔除: {invalid_count}")
                     
-                    if settings.cpa_auto_register_enabled:
+                except Exception as e:
+                    _log(f"检查 CPA 服务 {svc.id} ({svc.name}) 异常/鉴权失败: {e}", 'error')
+                    _log(f"无法正确访问接通接口，为保障供应，视为其剩余有效凭证数量为 0", "warning")
+                    valid_count = 0
+
+                # 无论检查成功还是失败，只要启用自动补充且 valid_count < threshold 就补货
+                if settings.cpa_auto_register_enabled:
+                    # 如果之前因为总数不够已经触发过了，就不要重复触发了
+                    if fetch_success and len(files) < settings.cpa_auto_register_threshold:
+                        pass
+                    else:
                         threshold = settings.cpa_auto_register_threshold
                         if valid_count < threshold:
-                            _log(f"CPA 服务 {svc.name} 有效凭证 ({valid_count}) 少于阈值 ({threshold})，准备开启自动注册")
+                            _log(f"CPA 服务 {svc.name} 当前有效凭证估算 ({valid_count}) 少于阈值 ({threshold})，准备开启自动注册")
                             to_register = settings.cpa_auto_register_batch_count
                             if to_register > 0:
-                                _log(f"已自动指派生成 {to_register} 个新任务！")
-                                # 因为当前在普通线程中，需要通过 run_coroutine_threadsafe 触发协程
+                                _log(f"已自动排队，指派生成 {to_register} 个新任务入列！")
                                 try:
-                                    loop = asyncio.get_event_loop()
-                                    asyncio.run_coroutine_threadsafe(
-                                        trigger_auto_registration(to_register, svc.id),
-                                        loop
-                                    )
+                                    if main_loop:
+                                        asyncio.run_coroutine_threadsafe(
+                                            trigger_auto_registration(to_register, svc.id),
+                                            main_loop
+                                        )
+                                    else:
+                                        _log("调度错误: 没有提供有效的 main_loop 导致无法开启协程", "error")
                                 except Exception as e:
                                     _log(f"调度自动注册任务失败: {e}", 'error')
 
-                except Exception as e:
-                    _log(f"检查 CPA 服务 {svc.id} ({svc.name}) 异常: {e}", 'error')
         
     except Exception as e:
         _log(f"定时检查 CPA 任务异常: {e}", 'error')
@@ -240,7 +304,7 @@ async def _scheduler_loop():
     while True:
         settings = get_settings()
         try:
-            await loop.run_in_executor(None, check_cpa_services_job)
+            await loop.run_in_executor(None, check_cpa_services_job, loop, None)
         except Exception as e:
             logger.error(f"Scheduler loop exception: {e}")
         

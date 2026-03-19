@@ -227,6 +227,14 @@ class TaskManager:
 
     def add_batch_log(self, batch_id: str, log_message: str):
         """添加批量任务日志并推送"""
+        try:
+            from ..core.scheduler import append_system_log
+            level = 'error' if any(err in log_message for err in ['异常', '错误', '失败']) else 'info'
+            if '[成功]' in log_message: level = 'success'
+            append_system_log(level, f"[批量任务] {log_message}")
+        except Exception:
+            pass
+
         # 先广播到 WebSocket，确保实时推送
         if self._loop and self._loop.is_running():
             try:

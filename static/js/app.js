@@ -96,11 +96,14 @@ const elements = {
     // 定时 CPA
     cpaAutoCheckEnabled: document.getElementById('cpa-auto-check-enabled'),
     cpaTestUrl: document.getElementById('cpa-test-url'),
+    cpaTestModel: document.getElementById('cpa-test-model'),
     cpaCheckInterval: document.getElementById('cpa-check-interval'),
+    cpaCheckSleep: document.getElementById('cpa-check-sleep'),
     cpaAutoRegisterEnabled: document.getElementById('cpa-auto-register-enabled'),
     cpaRegisterThreshold: document.getElementById('cpa-register-threshold'),
     cpaRegisterBatchCount: document.getElementById('cpa-register-batch-count'),
     cpaSaveConfigBtn: document.getElementById('cpa-save-config-btn'),
+    cpaStopTaskBtn: document.getElementById('cpa-stop-task-btn'),
     cpaForceCheckBtn: document.getElementById('cpa-force-check-btn'),
 };
 
@@ -121,8 +124,13 @@ async function loadSchedulerConfig() {
         const config = await api.get('/scheduler/config');
         if (elements.cpaAutoCheckEnabled) elements.cpaAutoCheckEnabled.checked = config.check_enabled;
         if (elements.cpaTestUrl) elements.cpaTestUrl.value = config.test_url || '';
+        if (elements.cpaTestModel) elements.cpaTestModel.value = config.test_model || '';
         if (elements.cpaCheckInterval) elements.cpaCheckInterval.value = config.check_interval;
+        if (elements.cpaCheckSleep) elements.cpaCheckSleep.value = config.check_sleep;
         if (elements.cpaAutoRegisterEnabled) elements.cpaAutoRegisterEnabled.checked = config.register_enabled;
+
+        // 更新徽标状态
+        updateCpaSchedulerBadge(config.check_enabled);
         if (elements.cpaRegisterThreshold) elements.cpaRegisterThreshold.value = config.register_threshold;
         if (elements.cpaRegisterBatchCount) elements.cpaRegisterBatchCount.value = config.register_batch_count;
     } catch (e) {
@@ -245,9 +253,15 @@ function initEventListeners() {
     if (elements.cpaSaveConfigBtn) {
         elements.cpaSaveConfigBtn.addEventListener('click', handleSaveSchedulerConfig);
     }
+    if (elements.cpaStopTaskBtn) {
+        elements.cpaStopTaskBtn.addEventListener('click', handleStopSchedulerTask);
+    }
     if (elements.cpaForceCheckBtn) {
         elements.cpaForceCheckBtn.addEventListener('click', handleForceCheckCpa);
     }
+
+    // 自动轮询后台系统日志
+    startSystemLogPolling();
 }
 
 async function handleSaveSchedulerConfig() {
@@ -257,18 +271,48 @@ async function handleSaveSchedulerConfig() {
         await api.post('/scheduler/config', {
             check_enabled: elements.cpaAutoCheckEnabled.checked,
             check_interval: parseInt(elements.cpaCheckInterval.value) || 60,
+            check_sleep: parseInt(elements.cpaCheckSleep.value) || 0,
             test_url: elements.cpaTestUrl.value,
+            test_model: elements.cpaTestModel ? elements.cpaTestModel.value : "",
             register_enabled: elements.cpaAutoRegisterEnabled.checked,
             register_threshold: parseInt(elements.cpaRegisterThreshold.value) || 10,
             register_batch_count: parseInt(elements.cpaRegisterBatchCount.value) || 5,
+            email_service: elements.emailService ? elements.emailService.value : "",
         });
         toast.success("自动任务配置已保存");
         addLog('success', '[系统] 定时 CPA 任务及注册配置已保存');
+        updateCpaSchedulerBadge(elements.cpaAutoCheckEnabled.checked);
     } catch (e) {
         toast.error("保存失败: " + e.message);
     } finally {
         elements.cpaSaveConfigBtn.disabled = false;
-        elements.cpaSaveConfigBtn.textContent = "💾 保存自动任务配置";
+        elements.cpaSaveConfigBtn.textContent = "💾 保存并应用配置";
+    }
+}
+
+async function handleStopSchedulerTask() {
+    elements.cpaStopTaskBtn.disabled = true;
+    elements.cpaAutoCheckEnabled.checked = false;
+    elements.cpaAutoRegisterEnabled.checked = false;
+    try {
+        await api.post('/scheduler/config', {
+            check_enabled: false,
+            check_interval: parseInt(elements.cpaCheckInterval.value) || 60,
+            check_sleep: parseInt(elements.cpaCheckSleep.value) || 0,
+            test_url: elements.cpaTestUrl.value,
+            test_model: elements.cpaTestModel ? elements.cpaTestModel.value : "",
+            register_enabled: false,
+            register_threshold: parseInt(elements.cpaRegisterThreshold.value) || 10,
+            register_batch_count: parseInt(elements.cpaRegisterBatchCount.value) || 5,
+            email_service: "",
+        });
+        toast.info("已停止自动任务");
+        addLog('warning', '[系统] 🔴 定时监控与自动注册已被手动停止');
+        updateCpaSchedulerBadge(false);
+    } catch (e) {
+        toast.error("停止失败: " + e.message);
+    } finally {
+        elements.cpaStopTaskBtn.disabled = false;
     }
 }
 
@@ -298,6 +342,40 @@ async function handleForceCheckCpa() {
     } finally {
         elements.cpaForceCheckBtn.disabled = false;
     }
+}
+
+function updateCpaSchedulerBadge(isEnabled) {
+    const badge = document.getElementById('cpa-scheduler-status-badge');
+    if (!badge) return;
+    if (isEnabled) {
+        badge.textContent = '🟢 已开启';
+        badge.style.backgroundColor = 'rgba(76, 175, 80, 0.1)';
+        badge.style.color = 'var(--success-color)';
+    } else {
+        badge.textContent = '🔴 未开启';
+        badge.style.backgroundColor = 'rgba(244, 67, 54, 0.1)';
+        badge.style.color = 'var(--error-color)';
+    }
+}
+
+let systemLogPollingInterval = null;
+let lastSystemLogId = 0;
+
+function startSystemLogPolling() {
+    if (systemLogPollingInterval) return;
+    systemLogPollingInterval = setInterval(async () => {
+        try {
+            const res = await api.get(`/scheduler/logs?since_id=${lastSystemLogId}`);
+            if (res && res.logs && res.logs.length > 0) {
+                res.logs.forEach(log => {
+                    addLog(log.level, log.msg);
+                });
+                lastSystemLogId = res.last_id;
+            }
+        } catch (error) {
+            // ignore network errors for background polling
+        }
+    }, 2000);
 }
 
 // 加载可用的邮箱服务

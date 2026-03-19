@@ -344,7 +344,7 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
     ),
     "cpa_auto_check_enabled": SettingDefinition(
         db_key="cpa.auto_check_enabled",
-        default_value=True,
+        default_value=False,
         category=SettingCategory.CPA,
         description="是否启用定时检查并剔除失效 CPA 凭证"
     ),
@@ -354,15 +354,27 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         category=SettingCategory.CPA,
         description="定时检查失效凭证间隔（分钟）"
     ),
+    "cpa_auto_check_sleep_seconds": SettingDefinition(
+        db_key="cpa.auto_check_sleep_seconds",
+        default_value=1,
+        category=SettingCategory.CPA,
+        description="每一次测活的间隔时间（秒）"
+    ),
     "cpa_auto_check_test_url": SettingDefinition(
         db_key="cpa.auto_check_test_url",
         default_value="https://chatgpt.com/backend-api/wham/usage",
         category=SettingCategory.CPA,
         description="自动检测凭证存活的请求测试口"
     ),
+    "cpa_auto_check_test_model": SettingDefinition(
+        db_key="cpa.auto_check_test_model",
+        default_value="gpt-5.2-codex",
+        category=SettingCategory.CPA,
+        description="测试模型名称（部分测试口需要）"
+    ),
     "cpa_auto_register_enabled": SettingDefinition(
         db_key="cpa.auto_register_enabled",
-        default_value=True,
+        default_value=False,
         category=SettingCategory.CPA,
         description="是否启用凭证不足时自动开启注册"
     ),
@@ -370,13 +382,19 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         db_key="cpa.auto_register_threshold",
         default_value=10,
         category=SettingCategory.CPA,
-        description="触发自动注册的凭证数量阈值"
+        description="触发自动注册的凭证阈值"
     ),
     "cpa_auto_register_batch_count": SettingDefinition(
         db_key="cpa.auto_register_batch_count",
         default_value=5,
         category=SettingCategory.CPA,
-        description="自动注册触发时执行的注册数量"
+        description="每次自动补充注册的数量"
+    ),
+    "cpa_auto_register_email_service": SettingDefinition(
+        db_key="cpa.auto_register_email_service",
+        default_value="",
+        category=SettingCategory.CPA,
+        description="自动补充注册使用的邮箱服务组合标记"
     ),
 
     # 验证码配置
@@ -443,10 +461,13 @@ SETTING_TYPES: Dict[str, Type] = {
     "cpa_enabled": bool,
     "cpa_auto_check_enabled": bool,
     "cpa_auto_check_interval": int,
+    "cpa_auto_check_sleep_seconds": int,
     "cpa_auto_check_test_url": str,
+    "cpa_auto_check_test_model": str,
     "cpa_auto_register_enabled": bool,
     "cpa_auto_register_threshold": int,
     "cpa_auto_register_batch_count": int,
+    "cpa_auto_register_email_service": str,
     "email_code_timeout": int,
     "email_code_poll_interval": int,
     "outlook_provider_priority": list,
@@ -730,12 +751,15 @@ class Settings(BaseModel):
     cpa_enabled: bool = False
     cpa_api_url: str = ""
     cpa_api_token: SecretStr = SecretStr("")
-    cpa_auto_check_enabled: bool = True
+    cpa_auto_check_enabled: bool = False
     cpa_auto_check_interval: int = 60
+    cpa_auto_check_sleep_seconds: int = 1
     cpa_auto_check_test_url: str = "https://chatgpt.com/backend-api/wham/usage"
-    cpa_auto_register_enabled: bool = True
+    cpa_auto_check_test_model: str = "gpt-5.2-codex"
+    cpa_auto_register_enabled: bool = False
     cpa_auto_register_threshold: int = 10
     cpa_auto_register_batch_count: int = 5
+    cpa_auto_register_email_service: str = ""
 
     # 验证码配置
     email_code_timeout: int = 120

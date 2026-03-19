@@ -304,20 +304,32 @@
 
                                 <div class="form-group" id="scheduler-group" style="padding-top: var(--spacing-sm); border-top: 1px solid var(--border-light); margin-top: var(--spacing-sm);">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs);">
-                                        <label style="font-weight: 500; margin-bottom: 0;">自动监控与注册 (定时 CPA)</label>
+                                        <label style="font-weight: 500; margin-bottom: 0;">自动监控与注册 (定时 CPA) <span id="cpa-scheduler-status-badge" style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px;"></span></label>
                                         <button type="button" class="btn btn-ghost btn-sm" id="cpa-force-check-btn" style="padding: 2px 8px; font-size: 0.75rem;">⚡ 强制体检</button>
                                     </div>
                                     <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer; margin-top: 6px;">
                                         <input type="checkbox" id="cpa-auto-check-enabled">
                                         <span>启用异常凭证测试并自动剔除</span>
                                     </label>
-                                    <div class="form-group" style="margin-top: 6px; padding-left: 24px;">
-                                        <label for="cpa-test-url" style="font-size: 0.8rem; color: var(--text-muted);">测试网址/模式模型 (请求 URL)</label>
-                                        <input type="text" id="cpa-test-url" placeholder="https://chatgpt.com/backend-api/wham/usage" style="padding: 4px 8px; font-size: 0.8rem;">
+                                    <div style="margin-top: 6px; padding-left: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <div class="form-group">
+                                            <label for="cpa-test-url" style="font-size: 0.8rem; color: var(--text-muted);">自定义测试 API</label>
+                                            <input type="text" id="cpa-test-url" placeholder="默认 wham/usage" style="padding: 4px 8px; font-size: 0.8rem;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="cpa-test-model" style="font-size: 0.8rem; color: var(--text-muted);">自定义测试模型</label>
+                                            <input type="text" id="cpa-test-model" placeholder="默认 gpt-5.2-codex" style="padding: 4px 8px; font-size: 0.8rem;">
+                                        </div>
                                     </div>
-                                    <div class="form-group" style="margin-top: 6px; padding-left: 24px;">
-                                        <label for="cpa-check-interval" style="font-size: 0.8rem; color: var(--text-muted);">定时运行间隔 (分钟)</label>
-                                        <input type="number" id="cpa-check-interval" min="1" max="1440" value="60" style="padding: 4px 8px; font-size: 0.8rem; width: 100px;">
+                                    <div style="margin-top: 6px; padding-left: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <div class="form-group">
+                                            <label for="cpa-check-interval" style="font-size: 0.8rem; color: var(--text-muted);">定时运行间隔 (分钟)</label>
+                                            <input type="number" id="cpa-check-interval" min="1" max="1440" value="60" style="padding: 4px 8px; font-size: 0.8rem;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="cpa-check-sleep" style="font-size: 0.8rem; color: var(--text-muted);">每次测活间隔 (秒)</label>
+                                            <input type="number" id="cpa-check-sleep" min="0" max="60" value="1" style="padding: 4px 8px; font-size: 0.8rem;">
+                                        </div>
                                     </div>
                                     <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer; margin-top: 12px;">
                                         <input type="checkbox" id="cpa-auto-register-enabled">
@@ -333,7 +345,10 @@
                                             <input type="number" id="cpa-register-batch-count" min="1" max="50" value="5" style="padding: 4px 8px; font-size: 0.8rem;">
                                         </div>
                                     </div>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="cpa-save-config-btn" style="margin-top: 10px; width: 100%;">💾 保存自动任务配置</button>
+                                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px; width: 100%;">
+                                        <button type="button" class="btn btn-secondary btn-lg" id="cpa-save-config-btn" style="width: 100%;">💾 保存并应用配置</button>
+                                        <button type="button" class="btn btn-danger btn-lg" id="cpa-stop-task-btn" style="width: 100%;">⛔ 停止自动任务</button>
+                                    </div>
                                 </div>
 
                                 <div class="form-actions" style="flex-direction: column;">
