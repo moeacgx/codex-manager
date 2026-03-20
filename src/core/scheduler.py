@@ -59,17 +59,54 @@ def _extract_cliproxy_account_id(item: dict) -> Optional[str]:
     return None
 
 
-def fetch_cliproxy_auth_files(api_url: str, api_token: str) -> List[dict]:
+def _extract_cpa_provider_value(payload: Any) -> Optional[str]:
+    if isinstance(payload, dict):
+        for key in ("provider", "type"):
+            value = str(payload.get(key) or "").strip().lower()
+            if value:
+                return value
+
+        for key in ("metadata", "auth", "auth_file", "data", "payload", "content", "json"):
+            nested = payload.get(key)
+            provider = _extract_cpa_provider_value(_decode_possible_json_payload(nested))
+            if provider:
+                return provider
+
+    if isinstance(payload, list):
+        for item in payload:
+            provider = _extract_cpa_provider_value(_decode_possible_json_payload(item))
+            if provider:
+                return provider
+
+    if isinstance(payload, str):
+        return _extract_cpa_provider_value(_decode_possible_json_payload(payload))
+
+    return None
+
+
+def _is_cpa_codex_auth_file(item: dict) -> bool:
+    if not isinstance(item, dict):
+        return False
+    return _extract_cpa_provider_value(item) == "codex"
+
+
+def fetch_cliproxy_auth_files(api_url: str, api_token: str) -> tuple[List[dict], int, int]:
     url = _normalize_cpa_auth_files_url(api_url)
     resp = cffi_requests.get(url, headers=_build_cpa_headers(api_token), timeout=30, impersonate="chrome110")
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, dict):
-        return []
+        return [], 0, 0
     files = data.get("files")
     if not isinstance(files, list):
-        return []
-    return files
+        return [], 0, 0
+
+    normalized_files = [item for item in files if isinstance(item, dict)]
+    total_count = len(normalized_files)
+
+    codex_files = [item for item in normalized_files if _is_cpa_codex_auth_file(item)]
+    skipped_count = total_count - len(codex_files)
+    return codex_files, total_count, skipped_count
 
 
 def _decode_possible_json_payload(payload: Any) -> Any:
@@ -430,12 +467,22 @@ def check_cpa_services_job(main_loop, manual_logs: list = None):
                 fetch_success = False
                 try:
                     _log(f"检查 CPA 服务: {svc.name}")
-                    files = fetch_cliproxy_auth_files(svc.api_url, svc.api_token)
+                    files, total_count, skipped_count = fetch_cliproxy_auth_files(svc.api_url, svc.api_token)
                     fetch_success = True
                     if not files:
-                        _log(f"CPA 服务 {svc.name} 没有凭证", 'warning')
+                        if total_count > 0:
+                            _log(
+                                f"CPA 服务 {svc.name} 获取到 {total_count} 个凭证，"
+                                f"筛选后没有 Codex 凭证（已跳过 {skipped_count} 个非 Codex/未标注凭证）",
+                                'warning',
+                            )
+                        else:
+                            _log(f"CPA 服务 {svc.name} 没有凭证", 'warning')
                     else:
-                        _log(f"CPA 服务 {svc.name} 获取到 {len(files)} 个凭证")
+                        _log(
+                            f"CPA 服务 {svc.name} 获取到 {total_count} 个凭证，"
+                            f"筛选后保留 {len(files)} 个 Codex 凭证，跳过 {skipped_count} 个"
+                        )
                         
                         has_triggered_early = False
                         if settings.cpa_auto_register_enabled:
@@ -481,6 +528,12 @@ def check_cpa_services_job(main_loop, manual_logs: list = None):
                                         'warning',
                                     )
                                     try:
+                                        if not _is_cpa_codex_auth_file(item):
+                                            _log(
+                                                f"检测到非 Codex 凭证 {name}，按策略仅跳过不清理",
+                                                'warning',
+                                            )
+                                            continue
                                         delete_cliproxy_auth_file(name, svc.api_url, svc.api_token)
                                         invalid_count += 1
                                         _log(f"已剔除失效凭证: {name}")
