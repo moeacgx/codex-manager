@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import logging
 import uuid
 from typing import Any, List, Optional
@@ -76,8 +77,49 @@ def _coerce_status_code(value: Any) -> Optional[int]:
     return None
 
 
+def _infer_status_code_from_text(text: str) -> Optional[int]:
+    if not text:
+        return None
+    lower = text.lower()
+    if "token_revoked" in lower or "token_invalidated" in lower or "invalidated oauth token" in lower:
+        return 401
+    if "unauthorized" in lower:
+        return 401
+    if "forbidden" in lower:
+        return 403
+    match = re.search(r"\b(401|403)\b", lower)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _maybe_parse_json_text(text: str) -> Optional[Any]:
+    if not text:
+        return None
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "{[":
+        return None
+    try:
+        return json.loads(stripped)
+    except Exception:
+        return None
+
+
 def _extract_cliproxy_status_code(item: Any) -> Optional[int]:
     if not isinstance(item, dict):
+        return None
+
+    def _check_value(value: Any) -> Optional[int]:
+        code = _coerce_status_code(value)
+        if code is not None:
+            return code
+        if isinstance(value, str):
+            inferred = _infer_status_code_from_text(value)
+            if inferred is not None:
+                return inferred
+            parsed = _maybe_parse_json_text(value)
+            if isinstance(parsed, dict):
+                return _extract_cliproxy_status_code(parsed)
         return None
 
     for key in (
@@ -89,16 +131,51 @@ def _extract_cliproxy_status_code(item: Any) -> Optional[int]:
         "lastStatusCode",
         "last_http_status",
         "lastHttpStatus",
+        "status",
+        "http_code",
+        "httpCode",
+        "code",
     ):
-        code = _coerce_status_code(item.get(key))
+        code = _check_value(item.get(key))
         if code is not None:
             return code
 
-    for key in ("status_message", "statusMessage", "last_status", "lastStatus", "error"):
+    for key in (
+        "status_message",
+        "statusMessage",
+        "last_status",
+        "lastStatus",
+        "error",
+        "last_error",
+        "lastError",
+        "error_message",
+        "errorMessage",
+        "message",
+        "reason",
+    ):
         nested = item.get(key)
+        if isinstance(nested, str):
+            inferred = _infer_status_code_from_text(nested)
+            if inferred is not None:
+                return inferred
+            parsed = _maybe_parse_json_text(nested)
+            if isinstance(parsed, dict):
+                nested = parsed
         if isinstance(nested, dict):
-            for inner_key in ("status_code", "statusCode", "http_status", "httpStatus", "code"):
-                code = _coerce_status_code(nested.get(inner_key))
+            for inner_key in (
+                "status_code",
+                "statusCode",
+                "http_status",
+                "httpStatus",
+                "status",
+                "http_code",
+                "httpCode",
+                "code",
+                "message",
+                "error",
+                "reason",
+            ):
+                code = _check_value(nested.get(inner_key))
                 if code is not None:
                     return code
     return None
