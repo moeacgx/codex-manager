@@ -356,7 +356,7 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
     ),
     "cpa_auto_check_mode": SettingDefinition(
         db_key="cpa.auto_check_mode",
-        default_value="probe",
+        default_value="panel",
         category=SettingCategory.CPA,
         description="自动检测方式：probe=直连穿透测活，panel=面板报错剔除"
     ),
@@ -788,7 +788,7 @@ class Settings(BaseModel):
     cpa_api_url: str = ""
     cpa_api_token: SecretStr = SecretStr("")
     cpa_auto_check_enabled: bool = False
-    cpa_auto_check_mode: str = "probe"
+    cpa_auto_check_mode: str = "panel"
     cpa_auto_check_remove_401: bool = False
     cpa_auto_check_remove_401_interval: int = 3
     cpa_auto_check_interval: int = 60

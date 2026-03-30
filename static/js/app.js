@@ -83,6 +83,8 @@ const elements = {
     concurrencyCount: document.getElementById('concurrency-count'),
     concurrencyHint: document.getElementById('concurrency-hint'),
     intervalGroup: document.getElementById('interval-group'),
+    // Token 获取方式
+    tokenMode: document.getElementById('token-mode'),
     // 注册后自动操作
     autoUploadCpa: document.getElementById('auto-upload-cpa'),
     cpaServiceSelectGroup: document.getElementById('cpa-service-select-group'),
@@ -128,7 +130,7 @@ async function loadSchedulerConfig() {
     try {
         const config = await api.get('/scheduler/config');
         if (elements.cpaAutoCheckEnabled) elements.cpaAutoCheckEnabled.checked = config.check_enabled;
-        if (elements.cpaCheckMode) elements.cpaCheckMode.value = config.check_mode || 'probe';
+        if (elements.cpaCheckMode) elements.cpaCheckMode.value = config.check_mode || 'panel';
         if (elements.cpaAutoRemove401) elements.cpaAutoRemove401.checked = !!config.check_remove_401;
         if (elements.cpaCheck401Interval) elements.cpaCheck401Interval.value = config.check_remove_401_interval ?? 3;
         if (elements.cpaTestUrl) elements.cpaTestUrl.value = config.test_url || '';
@@ -285,7 +287,7 @@ async function handleSaveSchedulerConfig() {
         const emailServicePool = getSelectedEmailServiceValues().filter(v => v !== 'outlook_batch:all');
         await api.post('/scheduler/config', {
             check_enabled: elements.cpaAutoCheckEnabled.checked,
-            check_mode: elements.cpaCheckMode ? elements.cpaCheckMode.value : 'probe',
+            check_mode: elements.cpaCheckMode ? elements.cpaCheckMode.value : 'panel',
             check_remove_401: elements.cpaAutoRemove401 ? elements.cpaAutoRemove401.checked : false,
             check_remove_401_interval: elements.cpaCheck401Interval ? (parseInt(elements.cpaCheck401Interval.value) || 3) : 3,
             check_interval: parseInt(elements.cpaCheckInterval.value) || 60,
@@ -317,7 +319,7 @@ async function handleStopSchedulerTask() {
         const emailServicePool = getSelectedEmailServiceValues().filter(v => v !== 'outlook_batch:all');
         await api.post('/scheduler/config', {
             check_enabled: false,
-            check_mode: elements.cpaCheckMode ? elements.cpaCheckMode.value : 'probe',
+            check_mode: elements.cpaCheckMode ? elements.cpaCheckMode.value : 'panel',
             check_remove_401: elements.cpaAutoRemove401 ? elements.cpaAutoRemove401.checked : false,
             check_remove_401_interval: elements.cpaCheck401Interval ? (parseInt(elements.cpaCheck401Interval.value) || 3) : 3,
             check_interval: parseInt(elements.cpaCheckInterval.value) || 60,
@@ -666,6 +668,7 @@ async function handleStartRegistration(e) {
     // 构建请求数据（代理从设置中自动获取）
     const requestData = {
         email_service_type: emailServiceType,
+        token_mode: elements.tokenMode ? elements.tokenMode.value : 'auto',
         auto_upload_cpa: elements.autoUploadCpa ? elements.autoUploadCpa.checked : false,
         cpa_service_ids: elements.autoUploadCpa && elements.autoUploadCpa.checked ? getSelectedServiceIds(elements.cpaServiceSelect) : [],
         auto_upload_sub2api: elements.autoUploadSub2api ? elements.autoUploadSub2api.checked : false,
@@ -1377,6 +1380,7 @@ async function handleOutlookBatchRegistration() {
     const requestData = {
         service_ids: selectedIds,
         skip_registered: skipRegistered,
+        token_mode: elements.tokenMode ? elements.tokenMode.value : 'auto',
         interval_min: intervalMin,
         interval_max: intervalMax,
         concurrency: Math.min(50, Math.max(1, concurrency)),

@@ -238,6 +238,16 @@
                                     </select>
                                 </div>
 
+                                <div class="form-group" id="token-mode-group">
+                                    <label for="token-mode">Token 获取方式</label>
+                                    <select id="token-mode" name="token_mode">
+                                        <option value="session">Session 提取</option>
+                                        <option value="oauth">OAuth 授权（含 refresh_token）</option>
+                                        <option value="auto" selected>自动（优先 OAuth，前10个采样）</option>
+                                    </select>
+                                    <small style="color: var(--text-muted); font-size: 0.75rem;">自动模式：每轮前 10 个使用 OAuth 采样，成功 &lt; 3 切换 Session；OAuth 失败会回退 Session</small>
+                                </div>
+
                                 <div class="form-group" id="batch-count-group" style="display: none;">
                                     <label for="batch-count">注册数量 (1-100)</label>
                                     <input type="number" id="batch-count" name="batch_count" min="1" max="100" value="5">
@@ -317,8 +327,8 @@
                                     <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer; margin-top: 6px; padding-left: 24px;">
                                         <span style="font-size: 0.8rem; color: var(--text-muted);">检测方式</span>
                                         <select id="cpa-check-mode" style="padding: 4px 8px; font-size: 0.8rem;">
-                                            <option value="probe">直连穿透测活（默认）</option>
-                                            <option value="panel">面板报错剔除（不测活）</option>
+                                            <option value="probe">直连穿透测活</option>
+                                            <option value="panel" selected>面板报错剔除（默认，不测活）</option>
                                         </select>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: var(--spacing-sm); cursor: pointer; margin-top: 6px; padding-left: 24px;">

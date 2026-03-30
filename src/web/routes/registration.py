@@ -121,6 +121,13 @@ def _normalize_email_service_pool(values: Optional[List[str]]) -> List[Tuple[str
     return normalized
 
 
+def _normalize_token_mode(mode: str) -> str:
+    value = (mode or "auto").strip().lower()
+    if value not in ("session", "oauth", "auto"):
+        raise ValueError("Token 获取方式必须为 session / oauth / auto")
+    return value
+
+
 def _pick_rr_service(pool: List[Tuple[str, Optional[int]]]) -> Tuple[str, Optional[int]]:
     """轮询选择邮箱服务（用于单次注册）。"""
     global _email_service_rr_index
@@ -138,6 +145,7 @@ class RegistrationTaskCreate(BaseModel):
     """创建注册任务请求"""
     email_service_type: str = "tempmail"
     email_service_pool: List[str] = []
+    token_mode: str = "auto"
     proxy: Optional[str] = None
     email_service_config: Optional[dict] = None
     email_service_id: Optional[int] = None
@@ -154,6 +162,7 @@ class BatchRegistrationRequest(BaseModel):
     count: int = 1
     email_service_type: str = "tempmail"
     email_service_pool: List[str] = []
+    token_mode: str = "auto"
     proxy: Optional[str] = None
     email_service_config: Optional[dict] = None
     email_service_id: Optional[int] = None
@@ -224,6 +233,7 @@ class OutlookBatchRegistrationRequest(BaseModel):
     """Outlook 批量注册请求"""
     service_ids: List[int]
     skip_registered: bool = True
+    token_mode: str = "auto"
     proxy: Optional[str] = None
     interval_min: int = 5
     interval_max: int = 30
@@ -292,7 +302,22 @@ def _normalize_email_service_config(
     return normalized
 
 
-def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: Optional[str], email_service_config: Optional[dict], email_service_id: Optional[int] = None, log_prefix: str = "", batch_id: str = "", auto_upload_cpa: bool = False, cpa_service_ids: List[int] = None, auto_upload_sub2api: bool = False, sub2api_service_ids: List[int] = None, auto_upload_tm: bool = False, tm_service_ids: List[int] = None):
+def _run_sync_registration_task(
+    task_uuid: str,
+    email_service_type: str,
+    proxy: Optional[str],
+    email_service_config: Optional[dict],
+    email_service_id: Optional[int] = None,
+    token_mode: str = "session",
+    log_prefix: str = "",
+    batch_id: str = "",
+    auto_upload_cpa: bool = False,
+    cpa_service_ids: List[int] = None,
+    auto_upload_sub2api: bool = False,
+    sub2api_service_ids: List[int] = None,
+    auto_upload_tm: bool = False,
+    tm_service_ids: List[int] = None
+):
     """
     在线程池中执行的同步注册任务
 
@@ -459,12 +484,14 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 log_callback(f"[邮箱] 使用服务: {label} (ID: {service_id_for_log}, 类型: {service_type.value})")
             else:
                 log_callback(f"[邮箱] 使用服务: {label} (类型: {service_type.value})")
+            log_callback(f"[Token] 获取方式: {'OAuth 授权' if token_mode == 'oauth' else 'Session 提取'}")
 
             engine = RegistrationEngine(
                 email_service=email_service,
                 proxy_url=actual_proxy_url,
                 callback_logger=log_callback,
-                task_uuid=task_uuid
+                task_uuid=task_uuid,
+                token_mode=token_mode,
             )
 
             # 执行注册
@@ -604,7 +631,22 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 pass
 
 
-async def run_registration_task(task_uuid: str, email_service_type: str, proxy: Optional[str], email_service_config: Optional[dict], email_service_id: Optional[int] = None, log_prefix: str = "", batch_id: str = "", auto_upload_cpa: bool = False, cpa_service_ids: List[int] = None, auto_upload_sub2api: bool = False, sub2api_service_ids: List[int] = None, auto_upload_tm: bool = False, tm_service_ids: List[int] = None):
+async def run_registration_task(
+    task_uuid: str,
+    email_service_type: str,
+    proxy: Optional[str],
+    email_service_config: Optional[dict],
+    email_service_id: Optional[int] = None,
+    token_mode: str = "session",
+    log_prefix: str = "",
+    batch_id: str = "",
+    auto_upload_cpa: bool = False,
+    cpa_service_ids: List[int] = None,
+    auto_upload_sub2api: bool = False,
+    sub2api_service_ids: List[int] = None,
+    auto_upload_tm: bool = False,
+    tm_service_ids: List[int] = None
+):
     """
     异步执行注册任务
 
@@ -629,6 +671,7 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
             proxy,
             email_service_config,
             email_service_id,
+            token_mode,
             log_prefix,
             batch_id,
             auto_upload_cpa,
@@ -683,6 +726,7 @@ async def run_batch_parallel(
     email_service_config: Optional[dict],
     email_service_id: Optional[int],
     concurrency: int,
+    token_mode: str = "session",
     email_service_pool: Optional[List[Tuple[str, Optional[int]]]] = None,
     auto_upload_cpa: bool = False,
     cpa_service_ids: List[int] = None,
@@ -698,6 +742,9 @@ async def run_batch_parallel(
     add_batch_log, update_batch_status = _make_batch_helpers(batch_id)
     semaphore = asyncio.Semaphore(concurrency)
     counter_lock = asyncio.Lock()
+    if token_mode == "auto":
+        add_batch_log("[系统] 并行模式不支持自动切换，已固定使用 OAuth")
+        token_mode = "oauth"
     add_batch_log(f"[系统] 并行模式启动，并发数: {concurrency}，总任务: {len(task_uuids)}")
 
     async def _run_one(idx: int, uuid: str):
@@ -710,7 +757,7 @@ async def run_batch_parallel(
         async with semaphore:
             await run_registration_task(
                 uuid, service_type, proxy, email_service_config, service_id,
-                log_prefix=prefix, batch_id=batch_id,
+                token_mode, log_prefix=prefix, batch_id=batch_id,
                 auto_upload_cpa=auto_upload_cpa, cpa_service_ids=cpa_service_ids or [],
                 auto_upload_sub2api=auto_upload_sub2api, sub2api_service_ids=sub2api_service_ids or [],
                 auto_upload_tm=auto_upload_tm, tm_service_ids=tm_service_ids or [],
@@ -756,6 +803,7 @@ async def run_batch_pipeline(
     interval_min: int,
     interval_max: int,
     concurrency: int,
+    token_mode: str = "session",
     email_service_pool: Optional[List[Tuple[str, Optional[int]]]] = None,
     auto_upload_cpa: bool = False,
     cpa_service_ids: List[int] = None,
@@ -774,7 +822,27 @@ async def run_batch_pipeline(
     running_tasks_list = []
     add_batch_log(f"[系统] 流水线模式启动，并发数: {concurrency}，总任务: {len(task_uuids)}")
 
-    async def _run_and_release(idx: int, uuid: str, pfx: str):
+    auto_token_mode = token_mode == "auto"
+    auto_sample_size = 10
+    auto_min_success = 3
+    auto_use_mode = "oauth" if auto_token_mode else token_mode
+    sample_total = min(auto_sample_size, len(task_uuids)) if auto_token_mode else 0
+    sample_done = asyncio.Event()
+    sample_lock = asyncio.Lock()
+    sample_completed = 0
+    sample_success = 0
+
+    if auto_token_mode:
+        if sample_total == 0:
+            sample_done.set()
+        else:
+            add_batch_log(
+                f"[系统] Token 自动模式启用：前 {sample_total} 个使用 OAuth 采样，"
+                f"成功 < {auto_min_success} 将切换 Session"
+            )
+
+    async def _run_and_release(idx: int, uuid: str, pfx: str, mode_for_task: str, is_sample: bool):
+        nonlocal auto_use_mode, sample_completed, sample_success
         try:
             if email_service_pool:
                 service_type, service_id = email_service_pool[idx % len(email_service_pool)]
@@ -782,7 +850,7 @@ async def run_batch_pipeline(
                 service_type, service_id = email_service_type, email_service_id
             await run_registration_task(
                 uuid, service_type, proxy, email_service_config, service_id,
-                log_prefix=pfx, batch_id=batch_id,
+                mode_for_task, log_prefix=pfx, batch_id=batch_id,
                 auto_upload_cpa=auto_upload_cpa, cpa_service_ids=cpa_service_ids or [],
                 auto_upload_sub2api=auto_upload_sub2api, sub2api_service_ids=sub2api_service_ids or [],
                 auto_upload_tm=auto_upload_tm, tm_service_ids=tm_service_ids or [],
@@ -801,6 +869,29 @@ async def run_batch_pipeline(
                             new_failed += 1
                             add_batch_log(f"{pfx} [失败] 注册失败: {t.error_message}")
                         update_batch_status(completed=new_completed, success=new_success, failed=new_failed)
+
+                if auto_token_mode and is_sample and sample_total > 0:
+                    async with sample_lock:
+                        sample_completed += 1
+                        if t and t.status == "completed":
+                            token_source = None
+                            if isinstance(t.result, dict):
+                                meta = t.result.get("metadata") or {}
+                                token_source = meta.get("token_source")
+                            if token_source == "oauth":
+                                sample_success += 1
+                        if sample_completed >= sample_total and not sample_done.is_set():
+                            if sample_success < auto_min_success:
+                                auto_use_mode = "session"
+                                add_batch_log(
+                                    f"[系统] OAuth 成功 {sample_success}/{sample_total}，已切换为 Session 提取"
+                                )
+                            else:
+                                auto_use_mode = "oauth"
+                                add_batch_log(
+                                    f"[系统] OAuth 成功 {sample_success}/{sample_total}，继续使用 OAuth"
+                                )
+                            sample_done.set()
         finally:
             semaphore.release()
 
@@ -814,6 +905,17 @@ async def run_batch_pipeline(
                 update_batch_status(finished=True, status="cancelled")
                 break
 
+            if auto_token_mode and sample_total > 0 and i == sample_total and not sample_done.is_set():
+                add_batch_log("[系统] OAuth 采样完成，等待统计结果...")
+                await sample_done.wait()
+                if task_manager.is_batch_cancelled(batch_id) or batch_tasks[batch_id]["cancelled"]:
+                    with get_db() as db:
+                        for remaining_uuid in task_uuids[i:]:
+                            crud.update_registration_task(db, remaining_uuid, status="cancelled")
+                    add_batch_log("[取消] 批量任务已取消")
+                    update_batch_status(finished=True, status="cancelled")
+                    break
+
             update_batch_status(current_index=i)
             await semaphore.acquire()
             prefix = f"[任务{i + 1}]"
@@ -826,7 +928,12 @@ async def run_batch_pipeline(
                 f"批量任务 {batch_id}: 任务{i + 1}/{len(task_uuids)} 开始 "
                 f"({preview_type}:{preview_id or 'default'})"
             )
-            t = asyncio.create_task(_run_and_release(i, task_uuid, prefix))
+            is_sample = auto_token_mode and i < sample_total
+            if auto_token_mode:
+                mode_for_task = "oauth" if is_sample else auto_use_mode
+            else:
+                mode_for_task = token_mode
+            t = asyncio.create_task(_run_and_release(i, task_uuid, prefix, mode_for_task, is_sample))
             running_tasks_list.append(t)
 
             if i < len(task_uuids) - 1 and not task_manager.is_batch_cancelled(batch_id):
@@ -859,6 +966,7 @@ async def run_batch_registration(
     interval_max: int,
     concurrency: int = 1,
     mode: str = "pipeline",
+    token_mode: str = "session",
     email_service_pool: Optional[List[Tuple[str, Optional[int]]]] = None,
     auto_upload_cpa: bool = False,
     cpa_service_ids: List[int] = None,
@@ -871,7 +979,7 @@ async def run_batch_registration(
     if mode == "parallel":
         await run_batch_parallel(
             batch_id, task_uuids, email_service_type, proxy,
-            email_service_config, email_service_id, concurrency, email_service_pool,
+            email_service_config, email_service_id, concurrency, token_mode, email_service_pool,
             auto_upload_cpa=auto_upload_cpa, cpa_service_ids=cpa_service_ids,
             auto_upload_sub2api=auto_upload_sub2api, sub2api_service_ids=sub2api_service_ids,
             auto_upload_tm=auto_upload_tm, tm_service_ids=tm_service_ids,
@@ -880,7 +988,7 @@ async def run_batch_registration(
         await run_batch_pipeline(
             batch_id, task_uuids, email_service_type, proxy,
             email_service_config, email_service_id,
-            interval_min, interval_max, concurrency, email_service_pool,
+            interval_min, interval_max, concurrency, token_mode, email_service_pool,
             auto_upload_cpa=auto_upload_cpa, cpa_service_ids=cpa_service_ids,
             auto_upload_sub2api=auto_upload_sub2api, sub2api_service_ids=sub2api_service_ids,
             auto_upload_tm=auto_upload_tm, tm_service_ids=tm_service_ids,
@@ -906,6 +1014,12 @@ async def start_registration(
         email_service_pool = _normalize_email_service_pool(request.email_service_pool)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    try:
+        token_mode = _normalize_token_mode(request.token_mode)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if token_mode == "auto":
+        token_mode = "oauth"
 
     if email_service_pool:
         email_service_type, email_service_id = _pick_rr_service(email_service_pool)
@@ -939,6 +1053,7 @@ async def start_registration(
         request.proxy,
         request.email_service_config,
         email_service_id,
+        token_mode,
         "",
         "",
         request.auto_upload_cpa,
@@ -998,6 +1113,11 @@ async def start_batch_registration(
     if request.mode not in ("parallel", "pipeline"):
         raise HTTPException(status_code=400, detail="模式必须为 parallel 或 pipeline")
 
+    try:
+        token_mode = _normalize_token_mode(request.token_mode)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     from ...config.settings import get_settings
     settings = get_settings()
     global_limit = settings.global_concurrency or 0
@@ -1047,6 +1167,7 @@ async def start_batch_registration(
         request.interval_max,
         request.concurrency,
         request.mode,
+        token_mode,
         email_service_pool,
         request.auto_upload_cpa,
         request.cpa_service_ids,
@@ -1411,6 +1532,7 @@ async def run_outlook_batch_registration(
     interval_max: int,
     concurrency: int = 1,
     mode: str = "pipeline",
+    token_mode: str = "session",
     auto_upload_cpa: bool = False,
     cpa_service_ids: List[int] = None,
     auto_upload_sub2api: bool = False,
@@ -1454,6 +1576,7 @@ async def run_outlook_batch_registration(
         interval_max=interval_max,
         concurrency=concurrency,
         mode=mode,
+        token_mode=token_mode,
         auto_upload_cpa=auto_upload_cpa,
         cpa_service_ids=cpa_service_ids,
         auto_upload_sub2api=auto_upload_sub2api,
@@ -1492,6 +1615,11 @@ async def start_outlook_batch_registration(
 
     if request.mode not in ("parallel", "pipeline"):
         raise HTTPException(status_code=400, detail="模式必须为 parallel 或 pipeline")
+
+    try:
+        token_mode = _normalize_token_mode(request.token_mode)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     from ...config.settings import get_settings
     request.concurrency = get_settings().global_concurrency
@@ -1561,6 +1689,7 @@ async def start_outlook_batch_registration(
         request.interval_max,
         request.concurrency,
         request.mode,
+        token_mode,
         request.auto_upload_cpa,
         request.cpa_service_ids,
         request.auto_upload_sub2api,

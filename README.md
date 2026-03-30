@@ -36,7 +36,10 @@ AI 站长交流群：https://t.me/vpsbbq
 
 - **全新流式高匿取 Token 链路**
   - 新老账号完美融合与适配：走完全真实的建号步骤或遇已注册号自动转入二次验证，直接携带解算的 Sentinel Token 无感进行 OTP 校验。
-  - **极致精简提权的 Session 直取机制**：弃用易掉链子的传统中间层 OAuth 取 Token 解析流。走到注册尾步回调后，系统会直接利用安全注入了 oai-did 设备的 Session 环境从 `/api/auth/session` 中抽取完整 `access_token` 及 `refresh_token` 等敏感属性。
+  - **支持两种 Token 获取方式**：
+    - **OAuth 登录流程（含 refresh_token）**：使用登录 + 授权 + 回调链路获取完整 token。
+    - **Session 提取**：注册/登录完成后直接从 `/api/auth/session` 抽取 token。
+  - **自动模式**：默认优先 OAuth，失败自动回退 Session，可在 UI 中切换。
 
 - **并发控制**
   - 流水线模式（Pipeline）：每隔 interval 秒启动新任务，限制最大并发数
@@ -354,7 +357,7 @@ docker-compose up -d --build --force-recreate
 - 代理优先级：动态代理 > 代理列表（随机/默认） > 直连
 - CPA / Sub2API / Team Manager 上传始终直连，不走代理
 - 注册时自动随机生成用户名和生日（年龄范围 18-45 岁）
-- 新注册账号会在建号完成后自动补走一次登录流程，以获取完整 token；已注册邮箱则直接进入登录流程
+- Token 获取方式支持 OAuth 登录流程或 Session 提取；自动模式默认优先 OAuth，失败回退 Session
 - 支付链接生成使用账号 access_token 鉴权，走全局代理配置
 - 无痕浏览器优先使用 playwright（注入 cookie 直达支付页）；未安装时降级为系统 Chrome/Edge 无痕模式
 - 安装完整支付功能：`pip install ".[payment]" && playwright install chromium`（可选）

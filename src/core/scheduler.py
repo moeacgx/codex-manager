@@ -584,6 +584,7 @@ async def trigger_auto_registration(count: int, cpa_service_id: int):
             interval_max=settings.registration_sleep_max,
             concurrency=settings.global_concurrency,
             mode="pipeline",
+            token_mode="auto",
             email_service_pool=email_service_pool if len(email_service_pool) > 1 else None,
             auto_upload_cpa=True,
             cpa_service_ids=[cpa_service_id],

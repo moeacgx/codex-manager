@@ -11,7 +11,7 @@ router = APIRouter()
 
 class CPASchedulerConfig(BaseModel):
     check_enabled: bool
-    check_mode: str = "probe"
+    check_mode: str = "panel"
     check_remove_401: bool = False
     check_remove_401_interval: int = 3
     check_interval: int
