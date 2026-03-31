@@ -175,6 +175,7 @@ def create_app() -> FastAPI:
         import asyncio
         from ..database.init_db import initialize_database
         from ..core.scheduler import start_scheduler
+        from ..services.update_service import get_update_service
 
         # 确保数据库已初始化（reload 模式下子进程也需要初始化）
         try:
@@ -189,6 +190,20 @@ def create_app() -> FastAPI:
         # 启动定时任务调度器
         start_scheduler()
 
+        async def _update_poll_loop():
+            # 启动后稍等，避免与初始化抢资源
+            await asyncio.sleep(2)
+            while True:
+                try:
+                    await get_update_service().check_and_notify()
+                except Exception as e:
+                    logger.warning(f"更新检查失败: {e}")
+                # 最低 60 秒，避免过度请求
+                interval = max(int(get_settings().update_check_interval_seconds or 600), 60)
+                await asyncio.sleep(interval)
+
+        app.state.update_task = asyncio.create_task(_update_poll_loop())
+
         logger.info("=" * 50)
         logger.info(f"{settings.app_name} v{settings.app_version} 启动中...")
         logger.info(f"调试模式: {settings.debug}")
@@ -198,6 +213,9 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def shutdown_event():
         """应用关闭事件"""
+        task = getattr(app.state, "update_task", None)
+        if task:
+            task.cancel()
         logger.info("应用关闭")
 
     return app
