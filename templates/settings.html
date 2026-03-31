@@ -43,6 +43,7 @@
                 <button class="tab-btn" data-tab="registration">⚙️ 注册配置</button>
                 <button class="tab-btn" data-tab="email-code">📧 验证码配置</button>
                 <button class="tab-btn" data-tab="database">💾 数据库</button>
+                <button class="tab-btn" data-tab="update">🆙 更新中心 <span class="tab-badge" id="update-tab-badge">有更新</span></button>
             </div>
 
             <!-- 代理设置 -->
@@ -568,6 +569,48 @@
                             <button class="btn btn-secondary" id="backup-btn">💾 备份数据库</button>
                             <button class="btn btn-warning" id="cleanup-btn">🧹 清理过期数据</button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 更新中心 -->
+            <div class="tab-content" id="update-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>系统更新</h3>
+                        <span class="hint">自动检查 Release，支持一键更新并重启</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-actions" style="margin-top: 0;">
+                            <button class="btn btn-secondary" id="check-update-btn">🔄 检查更新</button>
+                            <button class="btn btn-primary" id="confirm-update-btn">⬆️ 一键更新</button>
+                        </div>
+
+                        <div class="info-grid" style="margin-top: var(--spacing-lg);">
+                            <div class="info-item">
+                                <span class="label">当前版本</span>
+                                <span id="update-current" class="value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">最新版本</span>
+                                <span id="update-latest" class="value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">更新包</span>
+                                <span id="update-asset" class="value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">发布时间</span>
+                                <span id="update-published" class="value">-</span>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: var(--spacing-md);">
+                            <p class="hint">状态：<span id="update-message">-</span></p>
+                            <p class="hint">Release：<span id="update-release-url">-</span></p>
+                        </div>
+
+                        <div class="update-notes" id="update-notes">暂无更新说明</div>
                     </div>
                 </div>
             </div>

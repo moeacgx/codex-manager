@@ -1,0 +1,51 @@
+name: 自动创建 Tag
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 解析版本号
+        id: version
+        shell: bash
+        run: |
+          if [ ! -f VERSION ]; then
+            echo "VERSION 文件不存在，无法创建 Tag"
+            exit 1
+          fi
+          ver=$(cat VERSION | tr -d '\r' | tr -d '\n')
+          if [ -z "$ver" ]; then
+            echo "VERSION 为空，无法创建 Tag"
+            exit 1
+          fi
+          if [[ "$ver" != v* ]]; then
+            ver="v$ver"
+          fi
+          echo "tag=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: 检查 Tag 是否已存在
+        id: check
+        shell: bash
+        run: |
+          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 创建并推送 Tag
+        if: steps.check.outputs.exists != '1'
+        run: |
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"

@@ -71,7 +71,18 @@ const elements = {
     // Outlook 设置
     outlookSettingsForm: document.getElementById('outlook-settings-form'),
     // Web UI 访问控制
-    webuiSettingsForm: document.getElementById('webui-settings-form')
+    webuiSettingsForm: document.getElementById('webui-settings-form'),
+    // 更新中心
+    updateTabBadge: document.getElementById('update-tab-badge'),
+    checkUpdateBtn: document.getElementById('check-update-btn'),
+    confirmUpdateBtn: document.getElementById('confirm-update-btn'),
+    updateCurrent: document.getElementById('update-current'),
+    updateLatest: document.getElementById('update-latest'),
+    updateAsset: document.getElementById('update-asset'),
+    updatePublished: document.getElementById('update-published'),
+    updateMessage: document.getElementById('update-message'),
+    updateReleaseUrl: document.getElementById('update-release-url'),
+    updateNotes: document.getElementById('update-notes')
 };
 
 // 选中的服务 ID
@@ -87,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCpaServices();
     loadSub2ApiServices();
     loadTmServices();
+    loadUpdateStatus();
     initEventListeners();
 });
 
@@ -312,6 +324,14 @@ function initEventListeners() {
     if (elements.testSub2ApiServiceBtn) {
         elements.testSub2ApiServiceBtn.addEventListener('click', handleTestSub2ApiService);
     }
+
+    // 更新中心
+    if (elements.checkUpdateBtn) {
+        elements.checkUpdateBtn.addEventListener('click', handleCheckUpdate);
+    }
+    if (elements.confirmUpdateBtn) {
+        elements.confirmUpdateBtn.addEventListener('click', handleConfirmUpdate);
+    }
 }
 
 // 加载设置
@@ -461,6 +481,103 @@ async function loadDatabaseInfo() {
 
     } catch (error) {
         console.error('加载数据库信息失败:', error);
+    }
+}
+
+// 加载更新状态
+async function loadUpdateStatus() {
+    if (!elements.updateCurrent) return;
+    try {
+        const status = await api.get('/update/status');
+        renderUpdateStatus(status, true);
+    } catch (error) {
+        console.error('加载更新状态失败:', error);
+        toast.error('更新状态加载失败');
+    }
+}
+
+function renderUpdateStatus(status, allowNotify = false) {
+    if (!status) return;
+
+    const current = status.current_version || '-';
+    const latest = status.latest_tag || '-';
+    const message = status.message || status.error || (status.has_update ? '检测到新版本' : '当前已是最新版本');
+
+    if (elements.updateCurrent) elements.updateCurrent.textContent = current;
+    if (elements.updateLatest) elements.updateLatest.textContent = latest;
+    if (elements.updateAsset) elements.updateAsset.textContent = status.asset_name || '-';
+    if (elements.updatePublished) elements.updatePublished.textContent = format.date(status.published_at);
+    if (elements.updateMessage) elements.updateMessage.textContent = message || '-';
+    if (elements.updateReleaseUrl) elements.updateReleaseUrl.textContent = status.release_url || '-';
+
+    if (elements.updateNotes) {
+        const notes = (status.notes || '').trim();
+        elements.updateNotes.textContent = notes ? notes : '暂无更新说明';
+    }
+
+    const hasUpdate = !!status.has_update;
+    const canApply = !!status.can_apply;
+    if (elements.updateTabBadge) {
+        elements.updateTabBadge.style.display = hasUpdate ? 'inline-flex' : 'none';
+    }
+    if (elements.confirmUpdateBtn) {
+        elements.confirmUpdateBtn.disabled = !canApply;
+    }
+
+    if (allowNotify && hasUpdate && status.latest_tag) {
+        const lastTag = storage.get('update_notified_tag');
+        if (lastTag !== status.latest_tag) {
+            toast.warning(`发现新版本 ${status.latest_tag}，请前往「更新中心」一键更新`);
+            storage.set('update_notified_tag', status.latest_tag);
+        }
+    }
+}
+
+async function handleCheckUpdate() {
+    const btn = elements.checkUpdateBtn;
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '检查中...';
+    try {
+        const status = await api.post('/update/check', {});
+        renderUpdateStatus(status, true);
+        if (status.ok && status.has_update) {
+            toast.success(`检测到新版本 ${status.latest_tag}`);
+        } else if (status.ok) {
+            toast.info(status.message || '当前已是最新版本');
+        } else {
+            toast.error(status.error || '更新检查失败');
+        }
+    } catch (error) {
+        toast.error('更新检查失败: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 检查更新';
+    }
+}
+
+async function handleConfirmUpdate() {
+    const btn = elements.confirmUpdateBtn;
+    if (!btn) return;
+
+    const confirmed = await confirm('确认下载更新包并自动重启应用吗？');
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    btn.textContent = '更新中...';
+    try {
+        const result = await api.post('/update/confirm', {});
+        renderUpdateStatus(result, false);
+        if (result.triggered) {
+            toast.success('更新包已部署，应用即将重启，请稍后刷新页面');
+        } else {
+            toast.info(result.message || '当前已是最新版本');
+        }
+    } catch (error) {
+        toast.error('更新失败: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⬆️ 一键更新';
     }
 }
 

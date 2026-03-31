@@ -66,6 +66,9 @@ jobs:
       - name: 检出代码（获取附加文件）
         uses: actions/checkout@v4
 
+      - name: 写入版本文件
+        run: echo "${GITHUB_REF_NAME}" > VERSION
+
       - name: 下载所有构建产物
         uses: actions/download-artifact@v4
         with:
@@ -89,6 +92,7 @@ jobs:
             cp "$f" "$tmpdir/"
             cp README.md "$tmpdir/README.md"
             cp .env.example "$tmpdir/.env.example"
+            [ -f VERSION ] && cp VERSION "$tmpdir/VERSION" || true
             [ -f LICENSE ] && cp LICENSE "$tmpdir/LICENSE" || true
             cd "$tmpdir"
             zip -r "../release/${platform}.zip" .

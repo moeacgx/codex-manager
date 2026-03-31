@@ -15,6 +15,7 @@ services:
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
       - APP_ACCESS_PASSWORD=${APP_ACCESS_PASSWORD:-admin123}
+      - APP_UPDATE_REPOSITORY=${APP_UPDATE_REPOSITORY:-moeacgx/codex-manager}
       # 数据库（默认 SQLite，如需 PostgreSQL 取消下方注释）
       # - APP_DATABASE_URL=postgresql://user:password@db:5432/codex
       # HTTP 代理（如需代理取消下方注释）

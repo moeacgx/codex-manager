@@ -1374,6 +1374,7 @@ class RegistrationEngine:
                 "token_mode": self.token_mode,
                 "token_source": token_source,
                 "registered_at": datetime.now().isoformat(),
+                "user_agent": self.ua,
             }
             return result
 

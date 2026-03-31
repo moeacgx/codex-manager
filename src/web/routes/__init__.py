@@ -13,6 +13,8 @@ from .upload.cpa_services import router as cpa_services_router
 from .upload.sub2api_services import router as sub2api_services_router
 from .upload.tm_services import router as tm_services_router
 from .scheduler import router as scheduler_router
+from .proxy import router as proxy_router
+from .update import router as update_router
 
 api_router = APIRouter()
 
@@ -26,3 +28,5 @@ api_router.include_router(cpa_services_router, prefix="/cpa-services", tags=["cp
 api_router.include_router(sub2api_services_router, prefix="/sub2api-services", tags=["sub2api-services"])
 api_router.include_router(tm_services_router, prefix="/tm-services", tags=["tm-services"])
 api_router.include_router(scheduler_router, prefix="/scheduler", tags=["scheduler"])
+api_router.include_router(proxy_router, prefix="/proxy", tags=["proxy"])
+api_router.include_router(update_router, prefix="/update", tags=["update"])

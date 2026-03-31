@@ -4,6 +4,8 @@
 """
 
 import os
+import sys
+from pathlib import Path
 from typing import Optional, Dict, Any, Type, List
 from enum import Enum
 from pydantic import BaseModel, field_validator
@@ -25,6 +27,7 @@ class SettingCategory(str, Enum):
     CUSTOM_DOMAIN = "custom_domain"
     SECURITY = "security"
     CPA = "cpa"
+    UPDATE = "update"
 
 
 @dataclass
@@ -35,6 +38,30 @@ class SettingDefinition:
     category: SettingCategory
     description: str = ""
     is_secret: bool = False
+
+
+def _resolve_project_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _read_app_version() -> str:
+    env_version = (os.environ.get("APP_VERSION") or os.environ.get("BUILD_VERSION") or "").strip()
+    if env_version:
+        return env_version
+    candidates = [
+        Path.cwd() / "VERSION",
+        _resolve_project_root() / "VERSION",
+    ]
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if text:
+            return text
+    return ""
 
 
 # 所有配置项定义（包含数据库键名、默认值、分类、描述）
@@ -466,6 +493,75 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         category=SettingCategory.EMAIL,
         description="Outlook OAuth 默认 Client ID"
     ),
+
+    # 更新与自更新配置
+    "update_repository": SettingDefinition(
+        db_key="update.repository",
+        default_value="moeacgx/codex-manager",
+        category=SettingCategory.UPDATE,
+        description="更新检查的 GitHub 仓库 (owner/repo)"
+    ),
+    "update_github_token": SettingDefinition(
+        db_key="update.github_token",
+        default_value="",
+        category=SettingCategory.UPDATE,
+        description="GitHub Release 访问令牌（可选）",
+        is_secret=True
+    ),
+    "update_check_interval_seconds": SettingDefinition(
+        db_key="update.check_interval_seconds",
+        default_value=600,
+        category=SettingCategory.UPDATE,
+        description="更新检查间隔（秒）"
+    ),
+    "update_http_timeout_seconds": SettingDefinition(
+        db_key="update.http_timeout_seconds",
+        default_value=15,
+        category=SettingCategory.UPDATE,
+        description="更新 HTTP 超时（秒）"
+    ),
+    "update_notify_enabled": SettingDefinition(
+        db_key="update.notify_enabled",
+        default_value=True,
+        category=SettingCategory.UPDATE,
+        description="是否启用更新提醒"
+    ),
+    "self_update_enabled": SettingDefinition(
+        db_key="update.self_enabled",
+        default_value=True,
+        category=SettingCategory.UPDATE,
+        description="是否启用一键自更新"
+    ),
+    "self_update_docker_only": SettingDefinition(
+        db_key="update.self_docker_only",
+        default_value=True,
+        category=SettingCategory.UPDATE,
+        description="仅允许在 Docker 容器内自更新"
+    ),
+    "self_update_work_dir": SettingDefinition(
+        db_key="update.self_work_dir",
+        default_value="data/self_update",
+        category=SettingCategory.UPDATE,
+        description="自更新工作目录"
+    ),
+    "self_update_executable_name": SettingDefinition(
+        db_key="update.self_executable_name",
+        default_value="codex-register",
+        category=SettingCategory.UPDATE,
+        description="自更新可执行文件名"
+    ),
+    "self_update_asset_prefix": SettingDefinition(
+        db_key="update.self_asset_prefix",
+        default_value="codex-register",
+        category=SettingCategory.UPDATE,
+        description="Release 资产名称前缀"
+    ),
+    "self_update_restart_delay_seconds": SettingDefinition(
+        db_key="update.self_restart_delay_seconds",
+        default_value=2,
+        category=SettingCategory.UPDATE,
+        description="自更新后重启延迟（秒）"
+    ),
 }
 
 # 属性名到数据库键名的映射（用于向后兼容）
@@ -508,6 +604,17 @@ SETTING_TYPES: Dict[str, Type] = {
     "outlook_provider_priority": list,
     "outlook_health_failure_threshold": int,
     "outlook_health_disable_duration": int,
+    "update_repository": str,
+    "update_github_token": str,
+    "update_check_interval_seconds": int,
+    "update_http_timeout_seconds": int,
+    "update_notify_enabled": bool,
+    "self_update_enabled": bool,
+    "self_update_docker_only": bool,
+    "self_update_work_dir": str,
+    "self_update_executable_name": str,
+    "self_update_asset_prefix": str,
+    "self_update_restart_delay_seconds": int,
 }
 
 # 需要作为 SecretStr 处理的字段
@@ -646,6 +753,9 @@ def _load_settings_from_db() -> Dict[str, Any]:
             env_password = os.environ.get("APP_ACCESS_PASSWORD")
             if env_password:
                 settings_dict["webui_access_password"] = env_password
+            env_update_repo = os.environ.get("APP_UPDATE_REPOSITORY")
+            if env_update_repo:
+                settings_dict["update_repository"] = env_update_repo
         return settings_dict
     except Exception as e:
         if "未初始化" not in str(e):
@@ -811,6 +921,21 @@ class Settings(BaseModel):
     outlook_health_disable_duration: int = 60
     outlook_default_client_id: str = "24d9a0ed-8787-4584-883c-2fd79308940a"
 
+    # 更新配置
+    update_repository: str = "moeacgx/codex-manager"
+    update_github_token: Optional[SecretStr] = None
+    update_check_interval_seconds: int = 600
+    update_http_timeout_seconds: int = 15
+    update_notify_enabled: bool = True
+
+    # 自更新配置
+    self_update_enabled: bool = True
+    self_update_docker_only: bool = True
+    self_update_work_dir: str = "data/self_update"
+    self_update_executable_name: str = "codex-register"
+    self_update_asset_prefix: str = "codex-register"
+    self_update_restart_delay_seconds: int = 2
+
 
 # 全局配置实例
 _settings: Optional[Settings] = None
@@ -827,7 +952,14 @@ def get_settings() -> Settings:
         init_default_settings()
         # 从数据库加载所有设置
         settings_dict = _load_settings_from_db()
+        file_version = _read_app_version()
+        if file_version:
+            settings_dict["app_version"] = file_version
         _settings = Settings(**settings_dict)
+    else:
+        file_version = _read_app_version()
+        if file_version and _settings.app_version != file_version:
+            _settings.app_version = file_version
     return _settings
 
 

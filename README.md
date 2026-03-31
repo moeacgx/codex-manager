@@ -117,6 +117,7 @@ cp .env.example .env
 | `APP_PORT` | 监听端口 | `8000` |
 | `APP_ACCESS_PASSWORD` | Web UI 访问密钥 | `admin123` |
 | `APP_DATABASE_URL` | 数据库连接字符串 | `data/database.db` |
+| `APP_UPDATE_REPOSITORY` | 更新检查仓库 | `moeacgx/codex-manager` |
 
 > 优先级：命令行参数 > 环境变量（`.env`）> 数据库设置 > 默认值
 
@@ -137,6 +138,16 @@ python webui.py --access-password mypassword
 
 # 组合参数
 python webui.py --host 0.0.0.0 --port 8080 --access-password mypassword
+```
+
+### 守护进程模式（源码/单机推荐）
+
+```bash
+# 启用守护进程（更新后自动拉起）
+python webui.py --guardian
+
+# 可调参数（默认：5 次 / 300 秒 / 2 秒重启间隔）
+python webui.py --guardian --guardian-max-restarts 5 --guardian-window-seconds 300 --guardian-restart-delay 2
 ```
 
 > `--access-password` 优先级高于数据库中保存的密钥设置，每次启动时生效。打包后的 exe 同样支持此参数：
@@ -354,6 +365,7 @@ docker-compose up -d --build --force-recreate
 - 首次运行会自动创建 `data/` 目录和 SQLite 数据库
 - 所有账号和设置数据存储在 `data/register.db`
 - 日志文件写入 `logs/` 目录
+- 纯源码或单机运行且需要自更新时，建议使用 `--guardian` 守护模式
 - 代理优先级：动态代理 > 代理列表（随机/默认） > 直连
 - CPA / Sub2API / Team Manager 上传始终直连，不走代理
 - 注册时自动随机生成用户名和生日（年龄范围 18-45 岁）

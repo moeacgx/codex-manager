@@ -104,8 +104,20 @@ def get_proxy_url_for_task() -> Optional[str]:
     # 优先使用动态代理
     if settings.proxy_dynamic_enabled and settings.proxy_dynamic_api_url:
         api_key = settings.proxy_dynamic_api_key.get_secret_value() if settings.proxy_dynamic_api_key else ""
+        api_url = settings.proxy_dynamic_api_url.strip()
+        try:
+            from ..core.dynamic_proxy_service import get_local_proxy_service
+
+            if api_url.startswith("local://"):
+                if api_url == "local://port-range":
+                    return get_local_proxy_service().next_proxy()
+                logger.warning(f"未识别的本地动态代理地址: {api_url}")
+                return None
+        except Exception as exc:
+            logger.warning(f"本地动态代理获取失败: {exc}")
+
         proxy_url = fetch_dynamic_proxy(
-            api_url=settings.proxy_dynamic_api_url,
+            api_url=api_url,
             api_key=api_key,
             api_key_header=settings.proxy_dynamic_api_key_header,
             result_field=settings.proxy_dynamic_result_field,

@@ -20,6 +20,9 @@ COPY . .
 # Create data directory
 RUN mkdir -p data logs
 
+# Entrypoint (支持自更新)
+RUN chmod +x /app/scripts/entrypoint.sh
+
 # Expose port
 EXPOSE 8000
 
@@ -27,4 +30,4 @@ EXPOSE 8000
 ENV PYTHONUNBUFFERED=1
 
 # Run the application
-CMD ["python", "webui.py"]
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
