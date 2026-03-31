@@ -50,10 +50,7 @@ def setup_application():
     _load_dotenv()
 
     # 确保数据目录和日志目录可持久化（支持环境变量覆盖）
-    env_data_dir = os.environ.get("APP_DATA_DIR")
-    env_logs_dir = os.environ.get("APP_LOGS_DIR")
-    data_dir = Path(env_data_dir) if env_data_dir else (project_root / "data")
-    logs_dir = Path(env_logs_dir) if env_logs_dir else (project_root / "logs")
+    data_dir, logs_dir = _resolve_runtime_dirs(project_root)
     data_dir.mkdir(exist_ok=True)
     logs_dir.mkdir(exist_ok=True)
 
@@ -85,6 +82,46 @@ def setup_application():
 
     logger.info("应用程序设置完成")
     return settings
+
+
+def _derive_persistent_root(root: Path) -> Path | None:
+    """从 self_update/current 路径推导持久化根目录。"""
+    try:
+        parts = list(root.parts)
+        for i in range(len(parts) - 1):
+            if parts[i] == "self_update" and parts[i + 1] == "current":
+                if i == 0:
+                    return None
+                return Path(*parts[:i])
+    except Exception:
+        return None
+    return None
+
+
+def _resolve_runtime_dirs(root: Path) -> tuple[Path, Path]:
+    """解析数据/日志目录，避免自更新后落到 self_update/current 下。"""
+    env_data_dir = os.environ.get("APP_DATA_DIR")
+    env_logs_dir = os.environ.get("APP_LOGS_DIR")
+
+    base_root = _derive_persistent_root(root) or root
+
+    if env_data_dir:
+        data_dir = Path(env_data_dir)
+    else:
+        if base_root.name == "data":
+            data_dir = base_root
+        else:
+            data_dir = base_root / "data"
+
+    if env_logs_dir:
+        logs_dir = Path(env_logs_dir)
+    else:
+        if base_root.name == "data":
+            logs_dir = base_root.parent / "logs"
+        else:
+            logs_dir = base_root / "logs"
+
+    return data_dir, logs_dir
 
 
 def start_webui():
@@ -148,7 +185,11 @@ def _load_guardian_update_config() -> tuple[Path, str]:
         print(f"[Guardian] 读取更新配置失败，使用默认值: {exc}")
 
     if not work_root.is_absolute():
-        work_root = project_root / work_root
+        base_root = _derive_persistent_root(project_root) or project_root
+        if base_root.name == "data" and work_root.parts and work_root.parts[0] == "data":
+            work_root = base_root.parent / work_root
+        else:
+            work_root = base_root / work_root
 
     return work_root, executable_name
 
@@ -200,8 +241,10 @@ def _run_guardian(max_restarts: int, window_seconds: int, restart_delay: int) ->
     while True:
         cmd, cwd = _build_child_command(child_args, work_root, executable_name)
         env = os.environ.copy()
-        env.setdefault("APP_DATA_DIR", str(project_root / "data"))
-        env.setdefault("APP_LOGS_DIR", str(project_root / "logs"))
+        if "APP_DATA_DIR" not in env or "APP_LOGS_DIR" not in env:
+            data_dir, logs_dir = _resolve_runtime_dirs(project_root)
+            env.setdefault("APP_DATA_DIR", str(data_dir))
+            env.setdefault("APP_LOGS_DIR", str(logs_dir))
         logger.warning("守护进程启动子进程: %s", " ".join(cmd))
         proc = subprocess.Popen(cmd, cwd=str(cwd), env=env)
 

@@ -224,10 +224,23 @@ class UpdateService:
         return work_root, workspace_dir, current_dir, backup_dir
 
     @staticmethod
-    def _resolve_data_dir(settings) -> Path:
+    def _normalize_self_update_path(path: Path) -> Path:
+        try:
+            parts = list(path.parts)
+            for i in range(len(parts) - 1):
+                if parts[i] == "self_update" and parts[i + 1] == "current":
+                    if i == 0:
+                        return path
+                    return Path(*parts[:i])
+        except Exception:
+            return path
+        return path
+
+    @classmethod
+    def _resolve_data_dir(cls, settings) -> Path:
         env_data_dir = os.environ.get("APP_DATA_DIR")
         if env_data_dir:
-            return Path(env_data_dir).expanduser()
+            return cls._normalize_self_update_path(Path(env_data_dir).expanduser())
 
         db_url = getattr(settings, "database_url", "") or ""
         if isinstance(db_url, str):
@@ -237,26 +250,26 @@ class UpdateService:
                     path = Path(db_path)
                     if not path.is_absolute():
                         path = (Path.cwd() / path).resolve()
-                    return path.parent
+                    return cls._normalize_self_update_path(path.parent)
             if "://" not in db_url and db_url.strip():
                 path = Path(db_url)
                 if not path.is_absolute():
                     path = (Path.cwd() / path).resolve()
-                return path.parent
+                return cls._normalize_self_update_path(path.parent)
 
-        return (Path.cwd() / "data").resolve()
+        return cls._normalize_self_update_path((Path.cwd() / "data").resolve())
 
     @staticmethod
     def _resolve_logs_dir(settings) -> Path:
         env_logs_dir = os.environ.get("APP_LOGS_DIR")
         if env_logs_dir:
-            return Path(env_logs_dir).expanduser()
+            return UpdateService._normalize_self_update_path(Path(env_logs_dir).expanduser())
 
         log_file = getattr(settings, "log_file", "") or "logs/app.log"
         log_path = Path(log_file)
         if not log_path.is_absolute():
             log_path = (Path.cwd() / log_path).resolve()
-        return log_path.parent
+        return UpdateService._normalize_self_update_path(log_path.parent)
 
     @classmethod
     def _write_runtime_env(cls, target_dir: Path) -> None:
