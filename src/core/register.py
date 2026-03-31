@@ -100,6 +100,22 @@ def _extract_code_from_url(url: str):
     except Exception:
         return None
 
+
+def _extract_account_id_from_jwt(token: str) -> str:
+    """从 JWT 中尝试提取 chatgpt_account_id。"""
+    if not token or token.count(".") < 2:
+        return ""
+    payload_b64 = token.split(".")[1]
+    pad = "=" * ((4 - (len(payload_b64) % 4)) % 4)
+    try:
+        payload = base64.urlsafe_b64decode((payload_b64 + pad).encode("ascii"))
+        claims = json.loads(payload.decode("utf-8"))
+        auth_claims = claims.get("https://api.openai.com/auth") or {}
+        account_id = auth_claims.get("chatgpt_account_id") or claims.get("chatgpt_account_id") or claims.get("account_id")
+        return str(account_id or "").strip()
+    except Exception:
+        return ""
+
 # ================= SentinelTokenGenerator =================
 class SentinelTokenGenerator:
     """纯 Python 版本 sentinel token 生成器（PoW）"""
@@ -542,10 +558,13 @@ class RegistrationEngine:
             access_token = data.get("accessToken") or data.get("access_token") or ""
             if not access_token: access_token = self._find_jwt_in_data(data)
             if not access_token: return None
+            id_token = data.get("idToken") or data.get("id_token") or ""
+            account_id = _extract_account_id_from_jwt(id_token) or _extract_account_id_from_jwt(access_token)
             return {
                 "access_token": access_token,
                 "refresh_token": data.get("refreshToken") or data.get("refresh_token") or "",
-                "id_token": data.get("idToken") or data.get("id_token") or "",
+                "id_token": id_token,
+                "account_id": account_id,
             }
         except: return None
 
@@ -1318,6 +1337,7 @@ class RegistrationEngine:
                         result.access_token = tokens["access_token"]
                         result.refresh_token = tokens["refresh_token"]
                         result.id_token = tokens["id_token"]
+                        result.account_id = tokens.get("account_id") or result.account_id
                         result.success = True
                         token_source = "session_fallback"
                         result.session_token = self._get_session_cookie()
@@ -1331,6 +1351,7 @@ class RegistrationEngine:
                     result.access_token = tokens["access_token"]
                     result.refresh_token = tokens["refresh_token"]
                     result.id_token = tokens["id_token"]
+                    result.account_id = tokens.get("account_id") or result.account_id
                     result.success = True
                     token_source = "session"
                     result.session_token = self._get_session_cookie()

@@ -4,6 +4,7 @@ CPA (Codex Protocol API) 上传功能
 
 import json
 import logging
+import base64
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 from urllib.parse import quote
@@ -89,6 +90,36 @@ def _post_cpa_auth_file_raw_json(upload_url: str, filename: str, file_content: b
     )
 
 
+def _extract_account_id_from_jwt(token: str) -> str:
+    """从 JWT 中解析 chatgpt_account_id。"""
+    if not token or token.count(".") < 2:
+        return ""
+    payload_b64 = token.split(".")[1]
+    pad = "=" * ((4 - (len(payload_b64) % 4)) % 4)
+    try:
+        payload = base64.urlsafe_b64decode((payload_b64 + pad).encode("ascii"))
+        claims = json.loads(payload.decode("utf-8"))
+        auth_claims = claims.get("https://api.openai.com/auth") or {}
+        account_id = (
+            auth_claims.get("chatgpt_account_id")
+            or claims.get("chatgpt_account_id")
+            or claims.get("account_id")
+        )
+        return str(account_id or "").strip()
+    except Exception:
+        return ""
+
+
+def _resolve_account_id(account: Account) -> str:
+    if account.account_id:
+        return account.account_id
+    return (
+        _extract_account_id_from_jwt(account.id_token or "")
+        or _extract_account_id_from_jwt(account.access_token or "")
+        or ""
+    )
+
+
 def generate_token_json(account: Account) -> dict:
     """
     生成 CPA 格式的 Token JSON
@@ -99,12 +130,15 @@ def generate_token_json(account: Account) -> dict:
     Returns:
         CPA 格式的 Token 字典
     """
+    account_id = _resolve_account_id(account)
     return {
         "type": "codex",
         "email": account.email,
         "expired": account.expires_at.strftime("%Y-%m-%dT%H:%M:%S+08:00") if account.expires_at else "",
         "id_token": account.id_token or "",
-        "account_id": account.account_id or "",
+        "account_id": account_id or "",
+        "chatgpt_account_id": account_id or "",
+        "chatgptAccountId": account_id or "",
         "access_token": account.access_token or "",
         "last_refresh": account.last_refresh.strftime("%Y-%m-%dT%H:%M:%S+08:00") if account.last_refresh else "",
         "refresh_token": account.refresh_token or "",
@@ -229,6 +263,13 @@ def batch_upload_to_cpa(
                     "error": "缺少 Token"
                 })
                 continue
+
+            # 补全 account_id（用于 cliproxy 刷新额度）
+            if not account.account_id:
+                resolved_account_id = _resolve_account_id(account)
+                if resolved_account_id:
+                    account.account_id = resolved_account_id
+                    db.commit()
 
             # 生成 Token JSON
             token_data = generate_token_json(account)

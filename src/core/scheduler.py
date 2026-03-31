@@ -1,5 +1,6 @@
 import asyncio
 import json
+import base64
 import re
 import time
 import logging
@@ -61,7 +62,31 @@ def _extract_cliproxy_account_id(item: dict) -> Optional[str]:
         val = id_token.get("chatgpt_account_id")
         if val:
             return str(val)
+    if isinstance(id_token, str):
+        val = _extract_account_id_from_jwt(id_token)
+        if val:
+            return val
     return None
+
+
+def _extract_account_id_from_jwt(token: str) -> Optional[str]:
+    """从 JWT 中解析 chatgpt_account_id（兼容 Session 提取的 token）。"""
+    if not token or token.count(".") < 2:
+        return None
+    payload_b64 = token.split(".")[1]
+    pad = "=" * ((4 - (len(payload_b64) % 4)) % 4)
+    try:
+        payload = base64.urlsafe_b64decode((payload_b64 + pad).encode("ascii"))
+        claims = json.loads(payload.decode("utf-8"))
+        auth_claims = claims.get("https://api.openai.com/auth") or {}
+        account_id = (
+            auth_claims.get("chatgpt_account_id")
+            or claims.get("chatgpt_account_id")
+            or claims.get("account_id")
+        )
+        return str(account_id or "").strip() or None
+    except Exception:
+        return None
 
 
 def _coerce_status_code(value: Any) -> Optional[int]:
