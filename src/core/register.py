@@ -1594,6 +1594,7 @@ class RegistrationEngine:
         redirect_uri: str,
         workspace_id_hint: str = "",
         authorize_url: str = "",
+        enable_workspace_fallback: bool = True,
     ) -> Optional[str]:
         """Consent 兜底：调用 authorize/continue API 后继续提取 code。"""
         payload_candidates = ({},)
@@ -1654,66 +1655,66 @@ class RegistrationEngine:
                     text=response_text,
                     stage="OAuth Consent API 兜底",
                 )
-                payload_workspace_id = ""
                 if not continue_url:
-                    payload_workspace_id = self._extract_workspace_id_from_payload(resp_data) or ""
-                    if payload_workspace_id:
-                        self._log(f"Consent API 兜底提取到 workspace_id: {payload_workspace_id}")
-                        ws_continue_url = self._oauth_select_workspace(session, payload_workspace_id)
-                        if ws_continue_url:
-                            code = self._oauth_follow_and_extract_code(session, ws_continue_url)
-                            if code:
-                                return code
-                    if not payload_workspace_id:
-                        live_workspace_id = (
-                            self._oauth_get_workspace_id(
-                                session,
-                                consent_url=page_url,
-                                authorize_url=authorize_url,
-                                probe_pages=False,
-                            )
-                            or workspace_id_hint
-                        )
-                        if live_workspace_id:
-                            self._log(f"Consent API 空响应后提取到 workspace_id: {live_workspace_id}")
-                            ws_continue_url = self._oauth_select_workspace(session, live_workspace_id)
+                    if enable_workspace_fallback:
+                        payload_workspace_id = self._extract_workspace_id_from_payload(resp_data) or ""
+                        if payload_workspace_id:
+                            self._log(f"Consent API 兜底提取到 workspace_id: {payload_workspace_id}")
+                            ws_continue_url = self._oauth_select_workspace(session, payload_workspace_id)
                             if ws_continue_url:
                                 code = self._oauth_follow_and_extract_code(session, ws_continue_url)
                                 if code:
                                     return code
-
-                        # 有些场景 authorize/consent 会在当前会话下再次跳转出 code，这里补一次同会话回跳
-                        follow_candidates = [u for u in (authorize_url, page_url) if u]
-                        for candidate_url in follow_candidates:
-                            code = self._oauth_follow_and_extract_code(session, candidate_url)
-                            if code:
-                                self._log("Consent API 空响应后通过回跳链提取到授权码")
-                                return code
-                        if authorize_url:
-                            try:
-                                auto_resp = session.get(
-                                    authorize_url,
-                                    allow_redirects=True,
-                                    timeout=20,
+                        if not payload_workspace_id:
+                            live_workspace_id = (
+                                self._oauth_get_workspace_id(
+                                    session,
+                                    consent_url=page_url,
+                                    authorize_url=authorize_url,
+                                    probe_pages=False,
                                 )
-                                code = _extract_code_from_url(str(auto_resp.url))
-                                if not code and getattr(auto_resp, "history", None):
-                                    for hist in auto_resp.history:
-                                        code = _extract_code_from_url(hist.headers.get("Location", ""))
-                                        if code:
-                                            break
-                                if code:
-                                    self._log("Consent API 空响应后通过自动重定向提取到授权码")
-                                    return code
-                            except Exception:
-                                pass
+                                or workspace_id_hint
+                            )
+                            if live_workspace_id:
+                                self._log(f"Consent API 空响应后提取到 workspace_id: {live_workspace_id}")
+                                ws_continue_url = self._oauth_select_workspace(session, live_workspace_id)
+                                if ws_continue_url:
+                                    code = self._oauth_follow_and_extract_code(session, ws_continue_url)
+                                    if code:
+                                        return code
+
+                    # 无论是否允许 workspace，空响应都补一次同会话回跳
+                    follow_candidates = [u for u in (authorize_url, page_url) if u]
+                    for candidate_url in follow_candidates:
+                        code = self._oauth_follow_and_extract_code(session, candidate_url)
+                        if code:
+                            self._log("Consent API 空响应后通过回跳链提取到授权码")
+                            return code
+                    if authorize_url:
+                        try:
+                            auto_resp = session.get(
+                                authorize_url,
+                                allow_redirects=True,
+                                timeout=20,
+                            )
+                            code = _extract_code_from_url(str(auto_resp.url))
+                            if not code and getattr(auto_resp, "history", None):
+                                for hist in auto_resp.history:
+                                    code = _extract_code_from_url(hist.headers.get("Location", ""))
+                                    if code:
+                                        break
+                            if code:
+                                self._log("Consent API 空响应后通过自动重定向提取到授权码")
+                                return code
+                        except Exception:
+                            pass
 
             if continue_url:
                 next_url = continue_url if continue_url.startswith("http") else f"{self.oauth_issuer}{continue_url}"
                 code = _extract_code_from_url(next_url) or self._oauth_follow_and_extract_code(session, next_url)
                 if code:
                     return code
-            elif workspace_id_hint:
+            elif enable_workspace_fallback and workspace_id_hint:
                 ws_continue_url = self._oauth_select_workspace(session, workspace_id_hint)
                 if ws_continue_url:
                     code = self._oauth_follow_and_extract_code(session, ws_continue_url)
@@ -1880,14 +1881,26 @@ class RegistrationEngine:
                         redirect_uri=redirect_uri,
                         workspace_id_hint=workspace_id_hint,
                         authorize_url=authorize_url,
+                        enable_workspace_fallback=True,
                     )
                     if api_fallback_code:
                         return api_fallback_code
                 else:
                     self._log(
-                        "Consent 表单返回 405，已禁用 workspace/API 旁路，继续跟随回调链路提取 code",
+                        "Consent 表单返回 405，已禁用 workspace 旁路，尝试 continue API 与回调链路提取 code",
                         "warning",
                     )
+                    # 即便禁用 workspace 旁路，也允许尝试 consent continue API（不做 workspace/select）。
+                    api_fallback_code = self._oauth_submit_authorize_continue_api(
+                        session,
+                        page_url=page_url,
+                        redirect_uri=redirect_uri,
+                        workspace_id_hint="",
+                        authorize_url=authorize_url,
+                        enable_workspace_fallback=False,
+                    )
+                    if api_fallback_code:
+                        return api_fallback_code
 
             if resp.status_code in (301, 302, 303, 307, 308):
                 loc = resp.headers.get("Location", "")
@@ -1924,6 +1937,7 @@ class RegistrationEngine:
                     redirect_uri=redirect_uri,
                     workspace_id_hint=workspace_id_hint,
                     authorize_url=authorize_url,
+                    enable_workspace_fallback=True,
                 )
                 if api_fallback_code:
                     return api_fallback_code

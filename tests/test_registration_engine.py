@@ -561,6 +561,60 @@ def test_oauth_submit_consent_form_falls_back_to_authorize_continue_api():
     assert api_data == {}
 
 
+def test_oauth_submit_consent_form_405_uses_continue_api_without_workspace_fallback():
+    session = QueueSession([
+        (
+            "POST",
+            "https://auth.openai.com/sign-in-with-chatgpt/codex/consent",
+            DummyResponse(
+                status_code=405,
+                text="method not allowed",
+                url="https://auth.openai.com/sign-in-with-chatgpt/codex/consent",
+            ),
+        ),
+        (
+            "POST",
+            OPENAI_API_ENDPOINTS["signup"],
+            DummyResponse(
+                status_code=200,
+                payload={"continue_url": "https://auth.example.test/continue-405-no-ws"},
+                text='{"continue_url":"https://auth.example.test/continue-405-no-ws"}',
+                url=OPENAI_API_ENDPOINTS["signup"],
+            ),
+        ),
+        (
+            "GET",
+            "https://auth.example.test/continue-405-no-ws",
+            DummyResponse(
+                status_code=302,
+                headers={"Location": "http://localhost:1455/auth/callback?code=code-consent-405&state=state-1"},
+            ),
+        ),
+    ])
+    engine = RegistrationEngine(FakeEmailService(["123456"]))
+    # 默认关闭 workspace 旁路
+    engine.oauth_enable_workspace_fallback = False
+    html_text = """
+    <html>
+      <form action="/sign-in-with-chatgpt/codex/consent" method="post">
+        <input type="hidden" name="csrf_token" value="csrf-405" />
+        <button name="decision" value="allow">Continue</button>
+      </form>
+    </html>
+    """
+
+    code = engine._oauth_submit_consent_form(
+        session=session,
+        page_url="https://auth.openai.com/sign-in-with-chatgpt/codex/consent",
+        html_text=html_text,
+        redirect_uri="http://localhost:1455/auth/callback",
+    )
+
+    assert code == "code-consent-405"
+    assert session.calls[0]["url"] == "https://auth.openai.com/sign-in-with-chatgpt/codex/consent"
+    assert session.calls[1]["url"] == OPENAI_API_ENDPOINTS["signup"]
+
+
 def test_oauth_submit_consent_form_sets_default_action_for_authorize_continue_form():
     session = QueueSession([
         (
