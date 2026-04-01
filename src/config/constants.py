@@ -52,6 +52,16 @@ APP_DESCRIPTION = "自动注册 OpenAI/Codex CLI 账号的系统"
 # OpenAI OAuth 相关常量
 # ============================================================================
 
+# OpenAI 请求指纹（用于 OAuth token 交换）
+OPENAI_IMPERSONATE = "chrome120"
+OPENAI_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+OPENAI_SEC_CH_UA = '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
+OPENAI_SEC_CH_UA_MOBILE = "?0"
+OPENAI_SEC_CH_UA_PLATFORM = '"Windows"'
+
 # OAuth 参数
 OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 OAUTH_AUTH_URL = "https://auth.openai.com/oauth/authorize"

@@ -15,6 +15,11 @@ from typing import Any, Dict, Optional
 from curl_cffi import requests as cffi_requests
 
 from ...config.constants import (
+    OPENAI_IMPERSONATE,
+    OPENAI_SEC_CH_UA,
+    OPENAI_SEC_CH_UA_MOBILE,
+    OPENAI_SEC_CH_UA_PLATFORM,
+    OPENAI_USER_AGENT,
     OAUTH_CLIENT_ID,
     OAUTH_AUTH_URL,
     OAUTH_TOKEN_URL,
@@ -140,30 +145,25 @@ def _post_form(
     Returns:
         响应 JSON 数据
     """
-    # 构建代理配置
-    proxies = None
-    if proxy_url:
-        proxies = {
-            "http": proxy_url,
-            "https": proxy_url,
-        }
+    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
 
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": OPENAI_USER_AGENT,
+        "sec-ch-ua": OPENAI_SEC_CH_UA,
+        "sec-ch-ua-mobile": OPENAI_SEC_CH_UA_MOBILE,
+        "sec-ch-ua-platform": OPENAI_SEC_CH_UA_PLATFORM,
     }
 
     try:
-        # 使用 curl_cffi 发送请求，支持代理和浏览器指纹
         response = cffi_requests.post(
             url,
             data=data,
             headers=headers,
             timeout=timeout,
             proxies=proxies,
-            impersonate="chrome"
+            impersonate=OPENAI_IMPERSONATE,
         )
 
         if response.status_code != 200:
