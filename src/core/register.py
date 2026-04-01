@@ -2637,6 +2637,88 @@ class RegistrationEngine:
             self._log(f"验证验证码失败: {e}", "error")
             return False
 
+    def _oauth_recover_after_about_you_without_otp(
+        self,
+        session: cffi_requests.Session,
+        oauth_start: OAuthStart,
+        did: str,
+        sen_token: Optional[str],
+    ) -> Optional[str]:
+        """about-you 分支未走邮箱验证码时的恢复流程：补做登录/验证码后再提取 code。"""
+        try:
+            self._log("about-you 恢复流程：尝试补做登录态校准", "warning")
+            login_start = self._oauth_submit_login_start(session, did, sen_token)
+            if not login_start.success:
+                self._log(
+                    f"about-you 恢复流程登录入口失败: {login_start.error_message or 'unknown'}",
+                    "warning",
+                )
+                return None
+
+            page_type = str(login_start.page_type or "")
+            self._log(f"about-you 恢复流程入口页面类型: {page_type or 'unknown'}", "warning")
+            need_email_otp = False
+
+            if page_type == OPENAI_PAGE_TYPES["LOGIN_PASSWORD"]:
+                password_result = self._oauth_submit_login_password(session)
+                if not password_result.success:
+                    self._log(
+                        f"about-you 恢复流程密码提交失败: {password_result.error_message or 'unknown'}",
+                        "warning",
+                    )
+                    return None
+                page_type = str(password_result.page_type or "")
+                self._log(f"about-you 恢复流程密码后页面类型: {page_type or 'unknown'}", "warning")
+                if page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]:
+                    need_email_otp = True
+                elif page_type == "about_you":
+                    handled = self._handle_about_you("about-you 恢复流程")
+                    if not handled:
+                        self._log("about-you 恢复流程再次命中 about-you 且补全失败", "warning")
+                        return None
+                elif self._is_phone_required(page_type=page_type):
+                    raise OAuthPhoneRequiredError("about-you 恢复流程需要手机号验证")
+            elif page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]:
+                need_email_otp = True
+            elif page_type == "about_you":
+                handled = self._handle_about_you("about-you 恢复流程")
+                if not handled:
+                    self._log("about-you 恢复流程入口 about-you 补全失败", "warning")
+                    return None
+            elif self._is_phone_required(page_type=page_type):
+                raise OAuthPhoneRequiredError("about-you 恢复流程需要手机号验证")
+
+            if need_email_otp:
+                self._log("about-you 恢复流程：获取邮箱验证码", "warning")
+                code = self.wait_for_verification_email(timeout=120)
+                if not code:
+                    self._log("about-you 恢复流程获取邮箱验证码失败", "warning")
+                    return None
+                self._log("about-you 恢复流程：校验邮箱验证码", "warning")
+                if not self._oauth_validate_verification_code(session, code):
+                    self._log("about-you 恢复流程验证码首次校验失败，尝试重取验证码", "warning")
+                    retry_code = self.wait_for_verification_email(timeout=45)
+                    if not retry_code or retry_code == code:
+                        self._log("about-you 恢复流程未拿到可重试的新验证码", "warning")
+                        return None
+                    if not self._oauth_validate_verification_code(session, retry_code):
+                        self._log("about-you 恢复流程重试验证码校验失败", "warning")
+                        return None
+                    self._log("about-you 恢复流程重试验证码校验成功", "warning")
+
+            self._log("about-you 恢复流程：再次尝试提取授权码", "warning")
+            code = self._oauth_exchange_auth_code(session, oauth_start)
+            if code:
+                self._log("about-you 恢复流程成功提取授权码", "warning")
+            else:
+                self._log("about-you 恢复流程仍未提取到授权码", "warning")
+            return code
+        except OAuthPhoneRequiredError:
+            raise
+        except Exception as e:
+            self._log(f"about-you 恢复流程异常: {e}", "warning")
+            return None
+
     def _extract_cookie_values(self, session: cffi_requests.Session, name: str) -> list[str]:
         """从 cookie jar 中尽可能取出指定名称的 cookie 值。"""
         values: list[str] = []
@@ -3848,6 +3930,7 @@ class RegistrationEngine:
                         continue
 
                     need_email_otp = True
+                    skipped_email_otp_by_about_you = False
                     if login_start.page_type == OPENAI_PAGE_TYPES["LOGIN_PASSWORD"]:
                         password_result = self._oauth_submit_login_password(session)
                         if not password_result.success or not password_result.is_existing_account:
@@ -3857,6 +3940,7 @@ class RegistrationEngine:
                                 handled_about_you = self._handle_about_you("登录密码阶段")
                                 if handled_about_you:
                                     need_email_otp = False
+                                    skipped_email_otp_by_about_you = True
                                     self._log("登录密码阶段 about-you 已处理，继续尝试提取授权码")
                                 else:
                                     last_error = "登录密码阶段命中 about-you，补全资料失败"
@@ -3873,6 +3957,7 @@ class RegistrationEngine:
                             handled_about_you = self._handle_about_you("登录入口")
                             if handled_about_you:
                                 need_email_otp = False
+                                skipped_email_otp_by_about_you = True
                                 self._log("登录入口 about-you 已处理，继续尝试提取授权码")
                             else:
                                 last_error = "登录入口命中 about-you，补全资料失败"
@@ -3913,6 +3998,17 @@ class RegistrationEngine:
                         self._log("本次流程无需邮箱验证码，直接进入授权码提取")
 
                     auth_code = self._oauth_exchange_auth_code(session, oauth_start)
+                    if not auth_code and skipped_email_otp_by_about_you:
+                        self._log(
+                            "about-you 分支未提取到授权码，启动恢复流程（补做登录/验证码）",
+                            "warning",
+                        )
+                        auth_code = self._oauth_recover_after_about_you_without_otp(
+                            session=session,
+                            oauth_start=oauth_start,
+                            did=did,
+                            sen_token=sen_token,
+                        )
                     if not auth_code:
                         if self.oauth_enable_redirect_chain_fallback:
                             self._log("未能从 OAuth consent 流程提取 code，尝试重定向链兜底", "warning")

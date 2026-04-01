@@ -402,6 +402,82 @@ def test_oauth_login_flow_about_you_can_continue_without_waiting_otp(monkeypatch
     assert engine._oauth_session_token == "session-from-login"
 
 
+def test_oauth_login_flow_about_you_triggers_recovery_when_code_missing(monkeypatch):
+    email_service = FakeEmailService(["123456"])
+    engine = RegistrationEngine(email_service)
+    engine.email = "tester@example.com"
+    engine.password = "pass-1234"
+
+    class DummyOAuthManager:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start_oauth(self):
+            return OAuthStart(
+                auth_url="https://auth.example.test/flow/1",
+                state="state-1",
+                code_verifier="verifier-1",
+                redirect_uri="http://localhost:1455/auth/callback",
+            )
+
+    class DummyHttpClient:
+        def __init__(self, proxy_url=None):
+            self.session = SimpleNamespace(cookies={"__Secure-next-auth.session-token": "session-after-recovery"})
+
+        def check_sentinel(self, did):
+            return "sentinel-token"
+
+    monkeypatch.setattr("src.core.register.OAuthManager", DummyOAuthManager)
+    monkeypatch.setattr("src.core.register.OpenAIHTTPClient", DummyHttpClient)
+
+    monkeypatch.setattr(engine, "_oauth_get_device_id", lambda session, auth_url: "did-1")
+    monkeypatch.setattr(
+        engine,
+        "_oauth_submit_login_start",
+        lambda session, did, sen: SignupFormResult(
+            success=True,
+            page_type=OPENAI_PAGE_TYPES["LOGIN_PASSWORD"],
+            is_existing_account=False,
+        ),
+    )
+    monkeypatch.setattr(
+        engine,
+        "_oauth_submit_login_password",
+        lambda session: SignupFormResult(
+            success=True,
+            page_type="about_you",
+            is_existing_account=False,
+        ),
+    )
+    monkeypatch.setattr(engine, "_handle_about_you", lambda source: True)
+    monkeypatch.setattr(engine, "_oauth_exchange_auth_code", lambda session, oauth_start: None)
+
+    recovery_calls = {"count": 0}
+
+    def _fake_recovery(session, oauth_start, did, sen_token):
+        recovery_calls["count"] += 1
+        assert did == "did-1"
+        return "auth-code-recovered"
+
+    monkeypatch.setattr(engine, "_oauth_recover_after_about_you_without_otp", _fake_recovery)
+    monkeypatch.setattr(
+        engine,
+        "_oauth_handle_callback",
+        lambda oauth_manager, oauth_start, callback_url: {
+            "access_token": "access-recovered",
+            "refresh_token": "refresh-recovered",
+            "id_token": "id-recovered",
+        },
+    )
+
+    token_info = engine._get_oauth_tokens_via_login_flow()
+
+    assert token_info is not None
+    assert token_info["access_token"] == "access-recovered"
+    assert recovery_calls["count"] == 1
+    assert engine._oauth_session_token == "session-after-recovery"
+
+
 def test_oauth_rate_limit_sets_global_cooldown_and_short_backoff(monkeypatch):
     email_service = FakeEmailService(["123456"])
     engine = RegistrationEngine(email_service)
