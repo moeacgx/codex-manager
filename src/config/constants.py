@@ -46,7 +46,7 @@ class EmailServiceType(str, Enum):
 # ============================================================================
 
 APP_NAME = "OpenAI/Codex CLI 自动注册系统"
-APP_VERSION = "2.0.21"
+APP_VERSION = "2.0.22"
 APP_DESCRIPTION = "自动注册 OpenAI/Codex CLI 账号的系统"
 
 # ============================================================================

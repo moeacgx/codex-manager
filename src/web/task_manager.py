@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional, List, Callable, Any
 from collections import defaultdict
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,12 @@ _task_cancelled: Dict[str, bool] = {}
 _batch_status: Dict[str, dict] = {}
 _batch_logs: Dict[str, List[str]] = defaultdict(list)
 _batch_locks: Dict[str, threading.Lock] = {}
+
+_SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _now_iso_shanghai() -> str:
+    return datetime.now(_SHANGHAI_TZ).isoformat()
 
 
 def _get_log_lock(task_uuid: str) -> threading.Lock:
@@ -115,7 +122,7 @@ class TaskManager:
                     "type": "log",
                     "task_uuid": task_uuid,
                     "message": log_message,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": _now_iso_shanghai()
                 })
                 # 发送成功后更新 sent_index
                 with _ws_lock:
@@ -134,7 +141,7 @@ class TaskManager:
             "type": "status",
             "task_uuid": task_uuid,
             "status": status,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _now_iso_shanghai(),
             **kwargs
         }
 
@@ -152,9 +159,9 @@ class TaskManager:
             # 避免重复注册同一个连接
             if websocket not in _ws_connections[task_uuid]:
                 _ws_connections[task_uuid].append(websocket)
-                # 记录已发送的日志数量，用于发送历史日志时避免重复
-                with _get_log_lock(task_uuid):
-                    _ws_sent_index[task_uuid][id(websocket)] = len(_log_queues.get(task_uuid, []))
+                # 新连接统一从头补发历史日志，避免连接建立前的日志丢失。
+                # 前端已有去重机制，可容忍重连时的重复消息。
+                _ws_sent_index[task_uuid][id(websocket)] = 0
                 logger.info(f"WebSocket 连接已注册: {task_uuid}")
             else:
                 logger.warning(f"WebSocket 连接已存在，跳过重复注册: {task_uuid}")
@@ -262,7 +269,7 @@ class TaskManager:
                     "type": "log",
                     "batch_id": batch_id,
                     "message": log_message,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": _now_iso_shanghai()
                 })
                 # 发送成功后更新 sent_index
                 with _ws_lock:
@@ -302,7 +309,7 @@ class TaskManager:
                 await ws.send_json({
                     "type": "status",
                     "batch_id": batch_id,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": _now_iso_shanghai(),
                     **status
                 })
             except Exception as e:
@@ -338,9 +345,8 @@ class TaskManager:
             # 避免重复注册同一个连接
             if websocket not in _ws_connections[key]:
                 _ws_connections[key].append(websocket)
-                # 记录已发送的日志数量，用于发送历史日志时避免重复
-                with _get_batch_lock(batch_id):
-                    _ws_sent_index[key][id(websocket)] = len(_batch_logs.get(batch_id, []))
+                # 新连接统一从头补发历史日志，避免批量日志前半段丢失。
+                _ws_sent_index[key][id(websocket)] = 0
                 logger.info(f"批量任务 WebSocket 连接已注册: {batch_id}")
             else:
                 logger.warning(f"批量任务 WebSocket 连接已存在，跳过重复注册: {batch_id}")

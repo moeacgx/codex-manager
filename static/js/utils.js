@@ -280,6 +280,8 @@ function throttle(func, limit) {
 // 格式化工具
 // ============================================
 
+const SHANGHAI_TIMEZONE = 'Asia/Shanghai';
+
 const format = {
     date(dateStr) {
         if (!dateStr) return '-';
@@ -289,14 +291,18 @@ const format = {
             month: '2-digit',
             day: '2-digit',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            hour12: false,
+            timeZone: SHANGHAI_TIMEZONE
         });
     },
 
     dateShort(dateStr) {
         if (!dateStr) return '-';
         const date = new Date(dateStr);
-        return date.toLocaleDateString('zh-CN');
+        return date.toLocaleDateString('zh-CN', {
+            timeZone: SHANGHAI_TIMEZONE
+        });
     },
 
     relativeTime(dateStr) {

@@ -16,10 +16,12 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from ..services.base import BaseEmailService
 
 logger = logging.getLogger(__name__)
+_SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 
 def _extract_account_id_from_jwt(token: str) -> str:
@@ -149,7 +151,7 @@ class RegistrationEngine:
         self._log(self.LEGACY_REMOVED_MESSAGE, "warning")
 
     def _log(self, message: str, level: str = "info") -> None:
-        ts = datetime.now().strftime("%H:%M:%S")
+        ts = datetime.now(_SHANGHAI_TZ).strftime("%H:%M:%S")
         line = f"[{ts}] {message}"
         self.logs.append(line)
         if self.callback_logger:
@@ -196,7 +198,7 @@ class RegistrationEngine:
             metadata={
                 "token_mode": "browser_http_only",
                 "legacy_engine_removed": True,
-                "registered_at": datetime.now().isoformat(),
+                "registered_at": datetime.now(_SHANGHAI_TZ).isoformat(),
             },
             source="register",
         )

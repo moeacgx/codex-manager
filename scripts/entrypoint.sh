@@ -9,6 +9,7 @@ EXECUTABLE_NAME="${SELF_UPDATE_EXECUTABLE_NAME:-codex-register}"
 mkdir -p /app/data /app/logs "$WORK_ROOT"
 export APP_DATA_DIR="${APP_DATA_DIR:-/app/data}"
 export APP_LOGS_DIR="${APP_LOGS_DIR:-/app/logs}"
+export TZ="${TZ:-Asia/Shanghai}"
 
 if [ "$#" -gt 0 ]; then
   exec "$@"

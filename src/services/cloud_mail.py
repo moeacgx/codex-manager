@@ -89,6 +89,13 @@ class CloudMailService(BaseEmailService):
             return value
         return str(value or "").strip().lower() in ("1", "true", "yes", "on")
 
+    @staticmethod
+    def _short_text(value: Any, limit: int = 220) -> str:
+        text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+        if len(text) <= limit:
+            return text
+        return text[: max(20, limit)] + "..."
+
     def _resolve_domain(self, config: Dict[str, Any]) -> str:
         domain = (
             config.get("default_domain")
@@ -356,14 +363,24 @@ class CloudMailService(BaseEmailService):
         # 每次取码调用都重置一次调试开关，避免多任务时后续调用失去诊断日志
         self._debug_dumped = False
         self._debug_no_code_dumped = False
+        self._debug_time_filter_dumped = False
         saw_messages = False
         last_payload_snippet = ""
+        non_200_count = 0
+        last_non_200_status = 0
 
         while time.time() - start_time < timeout:
             try:
                 response = self.http_client.post(url, headers=headers, json=payload)
                 if response.status_code != 200:
-                    logger.debug(f"CloudMail 响应异常: {response.status_code} {response.text[:200]}")
+                    non_200_count += 1
+                    last_non_200_status = int(response.status_code)
+                    if non_200_count == 1 or non_200_count % 10 == 0:
+                        logger.warning(
+                            "CloudMail emailList 响应非 200: status=%s, body=%s",
+                            response.status_code,
+                            self._short_text(response.text, 220),
+                        )
                     time.sleep(poll_interval)
                     continue
 
@@ -407,16 +424,22 @@ class CloudMailService(BaseEmailService):
 
                 effective_cutoff_ts = None if time_filter_relaxed else cutoff_ts
                 candidates: List[Dict[str, Any]] = []
+                skipped_by_time = 0
                 for message in messages:
                     if not isinstance(message, dict):
                         continue
                     msg_id = self._extract_message_id(message)
                     msg_time = self._extract_message_timestamp(message)
-                    if effective_cutoff_ts is not None and msg_time is not None and msg_time < effective_cutoff_ts:
+                    # 仅在“二次验证码排重阶段”启用严格时间窗，首轮验证码不做硬过滤，
+                    # 避免云端与邮箱服务时钟偏差导致把第一封验证码误判为旧邮件。
+                    if (
+                        strict_time_filter
+                        and effective_cutoff_ts is not None
+                        and msg_time is not None
+                        and msg_time < effective_cutoff_ts
+                    ):
+                        skipped_by_time += 1
                         continue
-                    if effective_cutoff_ts is not None and msg_time is None and strict_time_filter:
-                        # 登录二次验证码阶段优先依赖排重策略，避免因缺失时间戳直接误判超时
-                        pass
 
                     content = self._extract_message_text(message)
                     code = self._extract_code_from_text(content, pattern)
@@ -458,6 +481,15 @@ class CloudMailService(BaseEmailService):
                 if found_code:
                     return found_code
 
+                if skipped_by_time > 0 and strict_time_filter and not getattr(self, "_debug_time_filter_dumped", False):
+                    logger.warning(
+                        "CloudMail 时间窗过滤跳过 %s 封邮件（strict=%s, relaxed=%s）",
+                        skipped_by_time,
+                        strict_time_filter,
+                        time_filter_relaxed,
+                    )
+                    self._debug_time_filter_dumped = True
+
                 if messages and not getattr(self, "_debug_no_code_dumped", False):
                     if self._quiet_warnings:
                         logger.debug("CloudMail 已获取邮件但未匹配验证码（quiet 模式已静默）")
@@ -484,11 +516,13 @@ class CloudMailService(BaseEmailService):
             logger.warning(f"CloudMail 等待验证码超时: {email}")
         else:
             logger.warning(
-                "CloudMail 等待验证码超时: %s (saw_messages=%s, excluded_count=%s, time_filter_relaxed=%s, payload=%s)",
+                "CloudMail 等待验证码超时: %s (saw_messages=%s, excluded_count=%s, time_filter_relaxed=%s, non_200_count=%s, last_non_200=%s, payload=%s)",
                 email,
                 saw_messages,
                 len(excluded),
                 time_filter_relaxed,
+                non_200_count,
+                last_non_200_status or "-",
                 (last_payload_snippet or "-"),
             )
         return None

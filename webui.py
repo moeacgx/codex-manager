@@ -27,6 +27,17 @@ from src.database.init_db import initialize_database
 from src.config.settings import get_settings
 
 
+def _force_beijing_timezone():
+    """强制进程时区为北京时间（Asia/Shanghai）。"""
+    target_tz = "Asia/Shanghai"
+    os.environ["TZ"] = target_tz
+    try:
+        if hasattr(time, "tzset"):
+            time.tzset()
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"设置时区失败: {exc}")
+
+
 def _load_dotenv():
     """加载 .env 文件（可执行文件同目录或项目根目录）"""
     env_path = project_root / ".env"
@@ -53,6 +64,7 @@ def setup_application():
     """设置应用程序"""
     # 加载 .env 文件（优先级低于已有环境变量）
     _load_dotenv()
+    _force_beijing_timezone()
 
     # 确保数据目录和日志目录可持久化（支持环境变量覆盖）
     data_dir, logs_dir = _resolve_runtime_dirs(project_root)
@@ -285,6 +297,8 @@ def _run_guardian(max_restarts: int, window_seconds: int, restart_delay: int) ->
 def main():
     """主函数"""
     import argparse
+
+    _force_beijing_timezone()
 
     parser = argparse.ArgumentParser(description="OpenAI/Codex CLI 自动注册系统 Web UI")
     parser.add_argument("--host", help="监听主机")

@@ -1270,7 +1270,7 @@ class BrowserRegistrationEngine:
             base_dir.mkdir(parents=True, exist_ok=True)
 
             task_part = re.sub(r"[^a-zA-Z0-9_-]+", "", str(self.task_uuid or "manual"))[:24] or "manual"
-            run_part = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_part = datetime.now(_SHANGHAI_TZ).strftime("%Y%m%d_%H%M%S")
             self.page_dump_dir = base_dir / f"{run_part}_{task_part}_{uuid.uuid4().hex[:6]}"
             self.page_dump_dir.mkdir(parents=True, exist_ok=True)
             self._log(f"页面元素快照已启用，目录: {self.page_dump_dir}")
@@ -1398,7 +1398,7 @@ class BrowserRegistrationEngine:
                 "index": self._page_dump_index,
                 "stage": stage,
                 "note": note,
-                "captured_at": datetime.now().isoformat(),
+                "captured_at": datetime.now(_SHANGHAI_TZ).isoformat(),
                 "url": url_text,
                 "cookie_names": cookies,
                 "elements": elements,
@@ -1762,7 +1762,7 @@ class BrowserRegistrationEngine:
                             self._log("检测到 Literal Age (直接填年龄数字) 输入模式...")
                             # extract birth_year
                             b_year = int(birthdate.split('-')[0])
-                            age_num = datetime.now().year - b_year
+                            age_num = datetime.now(_SHANGHAI_TZ).year - b_year
                             page.fill("input[name='age']", str(age_num))
                         else:
                             try:
@@ -1903,7 +1903,7 @@ class BrowserRegistrationEngine:
                             "issued_client_id": "",
                             "token_audience": [],
                             "token_scope": "",
-                            "registered_at": datetime.now().isoformat()
+                            "registered_at": datetime.now(_SHANGHAI_TZ).isoformat()
                         }
                         
                         # ======== 新增步骤: 获取官方持久化 OAuth Token ========

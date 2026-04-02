@@ -1217,7 +1217,7 @@ class RegistrationEngine:
                 "token_source": "oauth",
                 "auth_profile": "codex_oauth",
                 "registration_completed": True,
-                "registered_at": datetime.now().isoformat(),
+                "registered_at": datetime.now(_SHANGHAI_TZ).isoformat(),
                 "user_agent": self.ua,
             }
 
@@ -4668,7 +4668,7 @@ class RegistrationEngine:
                 "token_audience": token_audience,
                 "token_scope": token_scope,
                 "registration_completed": registration_completed,
-                "registered_at": datetime.now().isoformat(),
+                "registered_at": datetime.now(_SHANGHAI_TZ).isoformat(),
                 "user_agent": self.ua,
             }
             return result
