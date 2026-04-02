@@ -4197,7 +4197,7 @@ class RegistrationEngine:
             _random_delay(0.3, 0.8)
 
             self._log("获取 Sentinel Token...")
-            sentinel_token, so_token = self._fetch_sentinel_tokens()
+            sentinel_token, _ = self._fetch_sentinel_tokens()
 
             need_otp = False
             account_created = False
