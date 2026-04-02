@@ -6,6 +6,7 @@
 import abc
 import logging
 import random
+import re
 import threading
 from typing import Optional, Dict, Any, List, Sequence
 from enum import Enum
@@ -34,7 +35,7 @@ _DOMAIN_PICK_STATE: Dict[str, int] = {}
 
 def parse_domain_list(raw: Any) -> List[str]:
     """
-    解析域名配置，支持字符串(逗号分隔)或数组，返回去重后的域名列表。
+    解析域名配置，支持字符串(换行/逗号分隔)或数组，返回去重后的域名列表。
     """
     if raw is None:
         return []
@@ -42,9 +43,9 @@ def parse_domain_list(raw: Any) -> List[str]:
     items: List[str] = []
     if isinstance(raw, (list, tuple, set)):
         for value in raw:
-            items.extend(str(value or "").split(","))
+            items.extend(re.split(r"[\r\n,，]+", str(value or "")))
     else:
-        items.extend(str(raw or "").split(","))
+        items.extend(re.split(r"[\r\n,，]+", str(raw or "")))
 
     domains: List[str] = []
     seen = set()

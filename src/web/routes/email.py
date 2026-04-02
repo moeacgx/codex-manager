@@ -210,7 +210,7 @@ async def get_service_types():
                 "config_fields": [
                     {"name": "base_url", "label": "API 地址", "required": True},
                     {"name": "api_key", "label": "API Key", "required": True},
-                    {"name": "default_domain", "label": "邮箱域名（支持逗号分隔）", "required": False},
+                    {"name": "default_domain", "label": "邮箱域名（建议一行一个，兼容逗号）", "required": False},
                     {"name": "domain_strategy", "label": "域名选择策略", "required": False, "default": "round_robin"},
                 ]
             },
@@ -221,7 +221,7 @@ async def get_service_types():
                 "config_fields": [
                     {"name": "base_url", "label": "Worker 地址", "required": True, "placeholder": "https://mail.example.com"},
                     {"name": "admin_password", "label": "Admin 密码", "required": True, "secret": True},
-                    {"name": "domain", "label": "邮箱域名（支持逗号分隔）", "required": True, "placeholder": "a.com,b.com"},
+                    {"name": "domain", "label": "邮箱域名（建议一行一个，兼容逗号）", "required": True, "placeholder": "a.com\\nb.com"},
                     {"name": "domain_strategy", "label": "域名选择策略", "required": False, "default": "round_robin"},
                     {"name": "enable_prefix", "label": "启用前缀", "required": False, "default": True},
                     {"name": "site_password", "label": "站点密码(x-custom-auth)", "required": False, "secret": True},
@@ -233,7 +233,7 @@ async def get_service_types():
                 "description": "DuckMail 接口邮箱服务，支持 API Key 私有域名访问",
                 "config_fields": [
                     {"name": "base_url", "label": "API 地址", "required": True, "placeholder": "https://api.duckmail.sbs"},
-                    {"name": "default_domain", "label": "邮箱域名（支持逗号分隔）", "required": True, "placeholder": "a.com,b.com"},
+                    {"name": "default_domain", "label": "邮箱域名（建议一行一个，兼容逗号）", "required": True, "placeholder": "a.com\\nb.com"},
                     {"name": "domain_strategy", "label": "域名选择策略", "required": False, "default": "round_robin"},
                     {"name": "api_key", "label": "API Key", "required": False, "secret": True},
                     {"name": "password_length", "label": "随机密码长度", "required": False, "default": 12},
@@ -248,7 +248,7 @@ async def get_service_types():
                     {"name": "admin_email", "label": "管理员邮箱", "required": False},
                     {"name": "admin_password", "label": "管理员密码", "required": False, "secret": True},
                     {"name": "api_token", "label": "API Token", "required": True, "secret": True},
-                    {"name": "domain", "label": "邮箱域名（支持逗号分隔）", "required": True, "placeholder": "a.com,b.com"},
+                    {"name": "domain", "label": "邮箱域名（建议一行一个，兼容逗号）", "required": True, "placeholder": "a.com\\nb.com"},
                     {"name": "domain_strategy", "label": "域名选择策略", "required": False, "default": "round_robin"},
                     {"name": "auth_header", "label": "鉴权 Header", "required": False, "default": "Authorization"},
                     {"name": "auth_prefix", "label": "鉴权前缀", "required": False, "default": ""},

@@ -374,17 +374,24 @@ function getCustomServiceTypeBadge(subType) {
 }
 
 function parseDomainList(rawValue) {
+    const splitDomainValue = (value) => String(value || '')
+        .split(/[\r\n,，]+/g)
+        .map(v => String(v || '').trim().replace(/^@+/, '').toLowerCase())
+        .filter(Boolean);
+
     if (Array.isArray(rawValue)) {
         const values = [];
         rawValue.forEach(item => {
-            String(item || '').split(',').forEach(part => values.push(part));
+            splitDomainValue(item).forEach(part => values.push(part));
         });
-        return [...new Set(values.map(v => String(v || '').trim().replace(/^@+/, '').toLowerCase()).filter(Boolean))];
+        return [...new Set(values)];
     }
-    return [...new Set(String(rawValue || '')
-        .split(',')
-        .map(v => String(v || '').trim().replace(/^@+/, '').toLowerCase())
-        .filter(Boolean))];
+    return [...new Set(splitDomainValue(rawValue))];
+}
+
+function formatDomainsForTextarea(rawValue) {
+    const domains = parseDomainList(rawValue);
+    return domains.join('\n');
 }
 
 function normalizeDomainStrategy(value) {
@@ -729,13 +736,13 @@ async function editCustomService(id, subType) {
             document.getElementById('edit-custom-api-url').value = service.config?.base_url || '';
             document.getElementById('edit-custom-api-key').value = '';
             document.getElementById('edit-custom-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : 'API Key';
-            document.getElementById('edit-custom-domain').value = service.config?.default_domain || service.config?.domain || '';
+            document.getElementById('edit-custom-domain').value = formatDomainsForTextarea(service.config?.default_domain || service.config?.domain || '');
             document.getElementById('edit-custom-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
         } else if (resolvedSubType === 'tempmail') {
             document.getElementById('edit-tm-base-url').value = service.config?.base_url || '';
             document.getElementById('edit-tm-admin-password').value = '';
             document.getElementById('edit-tm-admin-password').placeholder = service.config?.admin_password ? '已设置，留空保持不变' : '请输入 Admin 密码';
-            document.getElementById('edit-tm-domain').value = service.config?.domain || '';
+            document.getElementById('edit-tm-domain').value = formatDomainsForTextarea(service.config?.domain || '');
             document.getElementById('edit-tm-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
         } else if (resolvedSubType === 'cloudmail') {
             document.getElementById('edit-cm-base-url').value = service.config?.base_url || '';
@@ -744,13 +751,13 @@ async function editCustomService(id, subType) {
             document.getElementById('edit-cm-admin-password').placeholder = service.config?.admin_password ? '已设置，留空保持不变' : '请输入管理员密码';
             document.getElementById('edit-cm-api-token').value = service.config?.api_token || '';
             document.getElementById('edit-cm-api-token').placeholder = '请输入 API Token';
-            document.getElementById('edit-cm-domain').value = service.config?.default_domain || service.config?.domain || '';
+            document.getElementById('edit-cm-domain').value = formatDomainsForTextarea(service.config?.default_domain || service.config?.domain || '');
             document.getElementById('edit-cm-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
         } else {
             document.getElementById('edit-dm-base-url').value = service.config?.base_url || '';
             document.getElementById('edit-dm-api-key').value = '';
             document.getElementById('edit-dm-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : '请输入 API Key（可选）';
-            document.getElementById('edit-dm-domain').value = service.config?.default_domain || '';
+            document.getElementById('edit-dm-domain').value = formatDomainsForTextarea(service.config?.default_domain || '');
             document.getElementById('edit-dm-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
             document.getElementById('edit-dm-password-length').value = service.config?.password_length || 12;
         }
