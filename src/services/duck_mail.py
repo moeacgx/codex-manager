@@ -12,7 +12,13 @@ from datetime import datetime, timezone
 from html import unescape
 from typing import Any, Dict, List, Optional
 
-from .base import BaseEmailService, EmailServiceError, EmailServiceType
+from .base import (
+    BaseEmailService,
+    EmailServiceError,
+    EmailServiceType,
+    parse_domain_list,
+    pick_domain,
+)
 from ..config.constants import OTP_CODE_PATTERN
 from ..core.http_client import HTTPClient, RequestConfig
 
@@ -26,22 +32,28 @@ class DuckMailService(BaseEmailService):
     def __init__(self, config: Dict[str, Any] = None, name: str = None):
         super().__init__(EmailServiceType.DUCK_MAIL, name)
 
-        required_keys = ["base_url", "default_domain"]
-        missing_keys = [key for key in required_keys if not (config or {}).get(key)]
+        raw_config = config or {}
+        missing_keys = []
+        if not raw_config.get("base_url"):
+            missing_keys.append("base_url")
+        if not parse_domain_list(raw_config.get("default_domain") or raw_config.get("domain")):
+            missing_keys.append("default_domain")
         if missing_keys:
             raise ValueError(f"缺少必需配置: {missing_keys}")
 
         default_config = {
             "api_key": "",
+            "domain_strategy": "round_robin",
             "password_length": 12,
             "expires_in": None,
             "timeout": 30,
             "max_retries": 3,
             "proxy_url": None,
         }
-        self.config = {**default_config, **(config or {})}
+        self.config = {**default_config, **raw_config}
         self.config["base_url"] = str(self.config["base_url"]).rstrip("/")
-        self.config["default_domain"] = str(self.config["default_domain"]).strip().lstrip("@")
+        self._domains = self._resolve_domains(self.config)
+        self.config["default_domain"] = ",".join(self._domains)
 
         http_config = RequestConfig(
             timeout=self.config["timeout"],
@@ -54,6 +66,16 @@ class DuckMailService(BaseEmailService):
 
         self._accounts_by_id: Dict[str, Dict[str, Any]] = {}
         self._accounts_by_email: Dict[str, Dict[str, Any]] = {}
+
+    def _resolve_domains(self, config: Dict[str, Any]) -> List[str]:
+        domains = parse_domain_list(config.get("domain"))
+        if domains:
+            return domains
+        return parse_domain_list(config.get("default_domain"))
+
+    def _build_domain_rr_key(self, domains: List[str]) -> str:
+        base_url = str(self.config.get("base_url") or "").strip().lower()
+        return f"duck_mail|{self.name}|{base_url}|{','.join(domains)}"
 
     def _build_headers(
         self,
@@ -176,9 +198,14 @@ class DuckMailService(BaseEmailService):
         return "\n".join(part for part in [sender_text, subject, text_body, html_body] if part).strip()
 
     def create_email(self, config: Dict[str, Any] = None) -> Dict[str, Any]:
-        request_config = config or {}
+        request_config = {**self.config, **(config or {})}
         local_part = str(request_config.get("name") or self._generate_local_part()).strip()
-        domain = str(request_config.get("default_domain") or request_config.get("domain") or self.config["default_domain"]).strip().lstrip("@")
+        domains = self._resolve_domains(request_config) or self._domains
+        domain = pick_domain(
+            domains,
+            strategy=request_config.get("domain_strategy"),
+            rr_key=self._build_domain_rr_key(domains),
+        )
         address = f"{local_part}@{domain}"
         password = self._generate_password()
 
@@ -360,7 +387,9 @@ class DuckMailService(BaseEmailService):
             "service_type": self.service_type.value,
             "name": self.name,
             "base_url": self.config["base_url"],
-            "default_domain": self.config["default_domain"],
+            "default_domain": self._domains[0] if self._domains else "",
+            "domains": self._domains,
+            "domain_strategy": self.config.get("domain_strategy", "round_robin"),
             "cached_accounts": len(self._accounts_by_email),
             "status": self.status.value,
         }

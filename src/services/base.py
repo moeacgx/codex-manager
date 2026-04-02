@@ -5,7 +5,9 @@
 
 import abc
 import logging
-from typing import Optional, Dict, Any, List
+import random
+import threading
+from typing import Optional, Dict, Any, List, Sequence
 from enum import Enum
 
 from ..config.constants import EmailServiceType
@@ -24,6 +26,72 @@ class EmailServiceStatus(Enum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
+
+
+_DOMAIN_PICK_LOCK = threading.Lock()
+_DOMAIN_PICK_STATE: Dict[str, int] = {}
+
+
+def parse_domain_list(raw: Any) -> List[str]:
+    """
+    解析域名配置，支持字符串(逗号分隔)或数组，返回去重后的域名列表。
+    """
+    if raw is None:
+        return []
+
+    items: List[str] = []
+    if isinstance(raw, (list, tuple, set)):
+        for value in raw:
+            items.extend(str(value or "").split(","))
+    else:
+        items.extend(str(raw or "").split(","))
+
+    domains: List[str] = []
+    seen = set()
+    for item in items:
+        domain = str(item or "").strip().lstrip("@").lower()
+        if not domain or domain in seen:
+            continue
+        seen.add(domain)
+        domains.append(domain)
+    return domains
+
+
+def normalize_domain_strategy(value: Any) -> str:
+    """
+    规范化域名选择策略，默认 round_robin。
+    """
+    strategy = str(value or "").strip().lower()
+    if strategy == "random":
+        return "random"
+    return "round_robin"
+
+
+def pick_domain(
+    domains: Sequence[str],
+    strategy: Any = "round_robin",
+    rr_key: Optional[str] = None,
+) -> str:
+    """
+    根据策略从域名列表中选择一个域名。
+    """
+    normalized_domains = [
+        str(item or "").strip().lstrip("@").lower()
+        for item in domains
+        if str(item or "").strip()
+    ]
+    if not normalized_domains:
+        raise EmailServiceError("缺少邮箱域名")
+
+    normalized_strategy = normalize_domain_strategy(strategy)
+    if normalized_strategy == "random":
+        return random.choice(normalized_domains)
+
+    key = rr_key or "|".join(normalized_domains)
+    with _DOMAIN_PICK_LOCK:
+        index = _DOMAIN_PICK_STATE.get(key, 0) % len(normalized_domains)
+        _DOMAIN_PICK_STATE[key] = index + 1
+    return normalized_domains[index]
 
 
 class BaseEmailService(abc.ABC):

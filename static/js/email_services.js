@@ -373,13 +373,40 @@ function getCustomServiceTypeBadge(subType) {
     return '<span class="status-badge success">DuckMail</span>';
 }
 
+function parseDomainList(rawValue) {
+    if (Array.isArray(rawValue)) {
+        const values = [];
+        rawValue.forEach(item => {
+            String(item || '').split(',').forEach(part => values.push(part));
+        });
+        return [...new Set(values.map(v => String(v || '').trim().replace(/^@+/, '').toLowerCase()).filter(Boolean))];
+    }
+    return [...new Set(String(rawValue || '')
+        .split(',')
+        .map(v => String(v || '').trim().replace(/^@+/, '').toLowerCase())
+        .filter(Boolean))];
+}
+
+function normalizeDomainStrategy(value) {
+    return String(value || '').trim().toLowerCase() === 'random' ? 'random' : 'round_robin';
+}
+
 function getCustomServiceAddress(service) {
     const baseUrl = service.config?.base_url || '-';
-    const domain = service.config?.default_domain || service.config?.domain;
-    if (!domain) {
+    const domains = parseDomainList(service.config?.default_domain || service.config?.domain);
+    if (!domains.length) {
         return escapeHtml(baseUrl);
     }
-    return `${escapeHtml(baseUrl)}<div style="color: var(--text-muted); margin-top: 4px;">默认域名：@${escapeHtml(domain)}</div>`;
+
+    const strategy = normalizeDomainStrategy(service.config?.domain_strategy);
+    const strategyLabel = strategy === 'random' ? '随机' : '轮询';
+    const displayDomains = domains.length > 3
+        ? `${domains.slice(0, 3).map(d => `@${d}`).join(', ')} 等 ${domains.length} 个`
+        : domains.map(d => `@${d}`).join(', ');
+
+    return `${escapeHtml(baseUrl)}
+        <div style="color: var(--text-muted); margin-top: 4px;">域名：${escapeHtml(displayDomains)}</div>
+        <div style="color: var(--text-muted); margin-top: 2px;">策略：${strategyLabel}</div>`;
 }
 
 // 加载自定义邮箱服务（custom_domain + temp_mail + duck_mail 合并）
@@ -515,7 +542,8 @@ async function handleAddCustom(e) {
         config = {
             base_url: formData.get('api_url'),
             api_key: formData.get('api_key'),
-            default_domain: formData.get('domain')
+            default_domain: formData.get('domain'),
+            domain_strategy: formData.get('domain_strategy') || 'round_robin'
         };
     } else if (subType === 'tempmail') {
         serviceType = 'temp_mail';
@@ -523,7 +551,8 @@ async function handleAddCustom(e) {
             base_url: formData.get('tm_base_url'),
             admin_password: formData.get('tm_admin_password'),
             domain: formData.get('tm_domain'),
-            enable_prefix: true
+            enable_prefix: true,
+            domain_strategy: formData.get('tm_domain_strategy') || 'round_robin'
         };
     } else if (subType === 'cloudmail') {
         serviceType = 'cloud_mail';
@@ -532,7 +561,8 @@ async function handleAddCustom(e) {
             api_token: formData.get('cm_api_token'),
             admin_email: formData.get('cm_admin_email'),
             admin_password: formData.get('cm_admin_password'),
-            domain: formData.get('cm_domain')
+            domain: formData.get('cm_domain'),
+            domain_strategy: formData.get('cm_domain_strategy') || 'round_robin'
         };
     } else {
         serviceType = 'duck_mail';
@@ -540,6 +570,7 @@ async function handleAddCustom(e) {
             base_url: formData.get('dm_base_url'),
             api_key: formData.get('dm_api_key'),
             default_domain: formData.get('dm_domain'),
+            domain_strategy: formData.get('dm_domain_strategy') || 'round_robin',
             password_length: parseInt(formData.get('dm_password_length'), 10) || 12
         };
     }
@@ -699,11 +730,13 @@ async function editCustomService(id, subType) {
             document.getElementById('edit-custom-api-key').value = '';
             document.getElementById('edit-custom-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : 'API Key';
             document.getElementById('edit-custom-domain').value = service.config?.default_domain || service.config?.domain || '';
+            document.getElementById('edit-custom-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
         } else if (resolvedSubType === 'tempmail') {
             document.getElementById('edit-tm-base-url').value = service.config?.base_url || '';
             document.getElementById('edit-tm-admin-password').value = '';
             document.getElementById('edit-tm-admin-password').placeholder = service.config?.admin_password ? '已设置，留空保持不变' : '请输入 Admin 密码';
             document.getElementById('edit-tm-domain').value = service.config?.domain || '';
+            document.getElementById('edit-tm-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
         } else if (resolvedSubType === 'cloudmail') {
             document.getElementById('edit-cm-base-url').value = service.config?.base_url || '';
             document.getElementById('edit-cm-admin-email').value = service.config?.admin_email || '';
@@ -712,11 +745,13 @@ async function editCustomService(id, subType) {
             document.getElementById('edit-cm-api-token').value = service.config?.api_token || '';
             document.getElementById('edit-cm-api-token').placeholder = '请输入 API Token';
             document.getElementById('edit-cm-domain').value = service.config?.default_domain || service.config?.domain || '';
+            document.getElementById('edit-cm-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
         } else {
             document.getElementById('edit-dm-base-url').value = service.config?.base_url || '';
             document.getElementById('edit-dm-api-key').value = '';
             document.getElementById('edit-dm-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : '请输入 API Key（可选）';
             document.getElementById('edit-dm-domain').value = service.config?.default_domain || '';
+            document.getElementById('edit-dm-domain-strategy').value = normalizeDomainStrategy(service.config?.domain_strategy);
             document.getElementById('edit-dm-password-length').value = service.config?.password_length || 12;
         }
 
@@ -737,7 +772,8 @@ async function handleEditCustom(e) {
     if (subType === 'moemail') {
         config = {
             base_url: formData.get('api_url'),
-            default_domain: formData.get('domain')
+            default_domain: formData.get('domain'),
+            domain_strategy: formData.get('domain_strategy') || 'round_robin'
         };
         const apiKey = formData.get('api_key');
         if (apiKey && apiKey.trim()) config.api_key = apiKey.trim();
@@ -745,7 +781,8 @@ async function handleEditCustom(e) {
         config = {
             base_url: formData.get('tm_base_url'),
             domain: formData.get('tm_domain'),
-            enable_prefix: true
+            enable_prefix: true,
+            domain_strategy: formData.get('tm_domain_strategy') || 'round_robin'
         };
         const pwd = formData.get('tm_admin_password');
         if (pwd && pwd.trim()) config.admin_password = pwd.trim();
@@ -753,7 +790,8 @@ async function handleEditCustom(e) {
         config = {
             base_url: formData.get('cm_base_url'),
             admin_email: formData.get('cm_admin_email'),
-            domain: formData.get('cm_domain')
+            domain: formData.get('cm_domain'),
+            domain_strategy: formData.get('cm_domain_strategy') || 'round_robin'
         };
         const adminPassword = formData.get('cm_admin_password');
         if (adminPassword && adminPassword.trim()) config.admin_password = adminPassword.trim();
@@ -763,6 +801,7 @@ async function handleEditCustom(e) {
         config = {
             base_url: formData.get('dm_base_url'),
             default_domain: formData.get('dm_domain'),
+            domain_strategy: formData.get('dm_domain_strategy') || 'round_robin',
             password_length: parseInt(formData.get('dm_password_length'), 10) || 12
         };
         const apiKey = formData.get('dm_api_key');

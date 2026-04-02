@@ -11,7 +11,13 @@ import json
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
-from .base import BaseEmailService, EmailServiceError, EmailServiceType
+from .base import (
+    BaseEmailService,
+    EmailServiceError,
+    EmailServiceType,
+    parse_domain_list,
+    pick_domain,
+)
 from ..core.http_client import HTTPClient, RequestConfig
 from ..config.constants import OTP_CODE_PATTERN
 
@@ -32,6 +38,7 @@ class CloudMailService(BaseEmailService):
             "base_url": "",
             "api_token": "",
             "default_domain": "",
+            "domain_strategy": "round_robin",
             "timeout": 30,
             "max_retries": 3,
             "poll_interval": 3,
@@ -57,7 +64,7 @@ class CloudMailService(BaseEmailService):
         if missing_keys:
             raise ValueError(f"缺少必需配置: {missing_keys}")
 
-        if not self._resolve_domain(self.config):
+        if not self._resolve_domains(self.config):
             raise ValueError("缺少邮箱域名")
 
         http_config = RequestConfig(
@@ -96,13 +103,15 @@ class CloudMailService(BaseEmailService):
             return text
         return text[: max(20, limit)] + "..."
 
-    def _resolve_domain(self, config: Dict[str, Any]) -> str:
-        domain = (
-            config.get("default_domain")
-            or config.get("domain")
-            or ""
-        )
-        return str(domain).strip().lstrip("@")
+    def _resolve_domains(self, config: Dict[str, Any]) -> List[str]:
+        domains = parse_domain_list(config.get("domain"))
+        if domains:
+            return domains
+        return parse_domain_list(config.get("default_domain") or "")
+
+    def _build_domain_rr_key(self, domains: List[str]) -> str:
+        base_url = str(self.config.get("base_url") or "").strip().lower()
+        return f"cloud_mail|{self.name}|{base_url}|{','.join(domains)}"
 
     def _sanitize_local_part(self, local_part: str) -> str:
         safe = re.sub(r"[^a-zA-Z0-9._-]", "", local_part or "")
@@ -297,9 +306,14 @@ class CloudMailService(BaseEmailService):
         """生成 CloudMail 邮箱地址（无需远端创建）。"""
         try:
             request_config = {**self.config, **(config or {})}
-            domain = self._resolve_domain(request_config)
-            if not domain:
+            domains = self._resolve_domains(request_config)
+            if not domains:
                 raise EmailServiceError("CloudMail 缺少邮箱域名")
+            domain = pick_domain(
+                domains,
+                strategy=request_config.get("domain_strategy"),
+                rr_key=self._build_domain_rr_key(domains),
+            )
 
             local_part = (
                 request_config.get("local_part")
@@ -546,7 +560,8 @@ class CloudMailService(BaseEmailService):
     def check_health(self) -> bool:
         """检查 CloudMail 服务可用性。"""
         try:
-            domain = self._resolve_domain(self.config)
+            domains = self._resolve_domains(self.config)
+            domain = domains[0] if domains else ""
             test_email = f"healthcheck@{domain}" if domain else "healthcheck@example.com"
             url = f"{self.config['base_url']}/api/public/emailList"
             payload = {

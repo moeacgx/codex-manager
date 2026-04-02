@@ -321,21 +321,31 @@ def _normalize_email_service_config(
 
     if 'api_url' in normalized and 'base_url' not in normalized:
         normalized['base_url'] = normalized.pop('api_url')
+    if 'domain_select_strategy' in normalized and 'domain_strategy' not in normalized:
+        normalized['domain_strategy'] = normalized.pop('domain_select_strategy')
 
     if service_type == EmailServiceType.CUSTOM_DOMAIN:
         if 'domain' in normalized and 'default_domain' not in normalized:
             normalized['default_domain'] = normalized.pop('domain')
+        strategy = str(normalized.get('domain_strategy') or '').strip().lower()
+        normalized['domain_strategy'] = strategy if strategy in ('round_robin', 'random') else 'round_robin'
     elif service_type == EmailServiceType.TEMP_MAIL:
         if 'default_domain' in normalized and 'domain' not in normalized:
             normalized['domain'] = normalized.pop('default_domain')
+        strategy = str(normalized.get('domain_strategy') or '').strip().lower()
+        normalized['domain_strategy'] = strategy if strategy in ('round_robin', 'random') else 'round_robin'
     elif service_type == EmailServiceType.DUCK_MAIL:
         if 'domain' in normalized and 'default_domain' not in normalized:
             normalized['default_domain'] = normalized.pop('domain')
+        strategy = str(normalized.get('domain_strategy') or '').strip().lower()
+        normalized['domain_strategy'] = strategy if strategy in ('round_robin', 'random') else 'round_robin'
     elif service_type == EmailServiceType.CLOUD_MAIL:
         if 'domain' in normalized and 'default_domain' not in normalized:
             normalized['default_domain'] = normalized.pop('domain')
         if 'token' in normalized and 'api_token' not in normalized:
             normalized['api_token'] = normalized.pop('token')
+        strategy = str(normalized.get('domain_strategy') or '').strip().lower()
+        normalized['domain_strategy'] = strategy if strategy in ('round_robin', 'random') else 'round_robin'
 
     if proxy_url and 'proxy_url' not in normalized:
         normalized['proxy_url'] = proxy_url

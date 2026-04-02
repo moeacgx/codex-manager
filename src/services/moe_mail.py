@@ -10,7 +10,13 @@ import logging
 from typing import Optional, Dict, Any, List
 from urllib.parse import urljoin
 
-from .base import BaseEmailService, EmailServiceError, EmailServiceType
+from .base import (
+    BaseEmailService,
+    EmailServiceError,
+    EmailServiceType,
+    parse_domain_list,
+    pick_domain,
+)
 from ..core.http_client import HTTPClient, RequestConfig
 from ..config.constants import OTP_CODE_PATTERN
 
@@ -54,6 +60,7 @@ class MeoMailEmailService(BaseEmailService):
             "base_url": "",
             "api_key": "",
             "api_key_header": "X-API-Key",
+            "domain_strategy": "round_robin",
             "timeout": 30,
             "max_retries": 3,
             "proxy_url": None,
@@ -77,6 +84,32 @@ class MeoMailEmailService(BaseEmailService):
         self._emails_cache: Dict[str, Dict[str, Any]] = {}
         self._last_config_check: float = 0
         self._cached_config: Optional[Dict[str, Any]] = None
+
+    def _resolve_domains(
+        self,
+        request_config: Dict[str, Any],
+        sys_config: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        # 优先级：请求显式 domain/default_domain > 服务默认 default_domain > 系统配置 emailDomains
+        for key in ("domain", "default_domain"):
+            domains = parse_domain_list(request_config.get(key))
+            if domains:
+                return domains
+
+        domains = parse_domain_list(self.config.get("default_domain"))
+        if domains:
+            return domains
+
+        if isinstance(sys_config, dict):
+            domains = parse_domain_list(sys_config.get("emailDomains"))
+            if domains:
+                return domains
+
+        return []
+
+    def _build_domain_rr_key(self, domains: List[str]) -> str:
+        base_url = str(self.config.get("base_url") or "").strip().lower()
+        return f"custom_domain|{self.name}|{base_url}|{','.join(domains)}"
 
     def _get_headers(self) -> Dict[str, str]:
         """获取 API 请求头"""
@@ -206,18 +239,21 @@ class MeoMailEmailService(BaseEmailService):
         """
         # 获取默认配置
         sys_config = self.get_config()
-        default_domain = self.config.get("default_domain")
-        if not default_domain and sys_config.get("emailDomains"):
-            # 使用系统配置的第一个域名
-            domains = sys_config["emailDomains"].split(",")
-            default_domain = domains[0].strip() if domains else None
+        request_config = config or {}
+        domains = self._resolve_domains(request_config, sys_config)
+        selected_domain = None
+        if domains:
+            selected_domain = pick_domain(
+                domains,
+                strategy=request_config.get("domain_strategy") or self.config.get("domain_strategy"),
+                rr_key=self._build_domain_rr_key(domains),
+            )
 
         # 构建请求参数
-        request_config = config or {}
         create_data = {
             "name": request_config.get("name", ""),
             "expiryTime": request_config.get("expiryTime", self.config.get("default_expiry", 3600000)),
-            "domain": request_config.get("domain", default_domain),
+            "domain": selected_domain,
         }
 
         # 移除空值

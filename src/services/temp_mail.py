@@ -15,7 +15,13 @@ from email.policy import default as email_policy
 from html import unescape
 from typing import Optional, Dict, Any, List
 
-from .base import BaseEmailService, EmailServiceError, EmailServiceType
+from .base import (
+    BaseEmailService,
+    EmailServiceError,
+    EmailServiceType,
+    parse_domain_list,
+    pick_domain,
+)
 from ..core.http_client import HTTPClient, RequestConfig
 from ..config.constants import OTP_CODE_PATTERN
 
@@ -48,17 +54,26 @@ class TempMailService(BaseEmailService):
         """
         super().__init__(EmailServiceType.TEMP_MAIL, name)
 
-        required_keys = ["base_url", "admin_password", "domain"]
-        missing_keys = [key for key in required_keys if not (config or {}).get(key)]
+        raw_config = config or {}
+        missing_keys = []
+        if not raw_config.get("base_url"):
+            missing_keys.append("base_url")
+        if not raw_config.get("admin_password"):
+            missing_keys.append("admin_password")
+        if not parse_domain_list(raw_config.get("domain") or raw_config.get("default_domain")):
+            missing_keys.append("domain")
         if missing_keys:
             raise ValueError(f"缺少必需配置: {missing_keys}")
 
         default_config = {
             "enable_prefix": True,
+            "domain_strategy": "round_robin",
             "timeout": 30,
             "max_retries": 3,
         }
-        self.config = {**default_config, **(config or {})}
+        self.config = {**default_config, **raw_config}
+        self._domains = self._resolve_domains(self.config)
+        self.config["domain"] = ",".join(self._domains)
 
         # 不走代理，proxy_url=None
         http_config = RequestConfig(
@@ -72,6 +87,16 @@ class TempMailService(BaseEmailService):
         # 验证码缓存：按收件邮箱记录最近一次命中的验证码/邮件，避免跨调用重复消费旧邮件
         self._last_code_cache: Dict[str, str] = {}
         self._last_message_id_cache: Dict[str, str] = {}
+
+    def _resolve_domains(self, config: Dict[str, Any]) -> List[str]:
+        domains = parse_domain_list(config.get("domain"))
+        if domains:
+            return domains
+        return parse_domain_list(config.get("default_domain"))
+
+    def _build_domain_rr_key(self, domains: List[str]) -> str:
+        base_url = str(self.config.get("base_url") or "").strip().lower()
+        return f"temp_mail|{self.name}|{base_url}|{','.join(domains)}"
 
     def _decode_mime_header(self, value: str) -> str:
         """解码 MIME 头，兼容 RFC 2047 编码主题。"""
@@ -321,8 +346,14 @@ class TempMailService(BaseEmailService):
         suffix = ''.join(random.choices(string.ascii_lowercase, k=random.randint(1, 3)))
         name = letters + digits + suffix
 
-        domain = self.config["domain"]
-        enable_prefix = self.config.get("enable_prefix", True)
+        request_config = {**self.config, **(config or {})}
+        domains = self._resolve_domains(request_config) or self._domains
+        domain = pick_domain(
+            domains,
+            strategy=request_config.get("domain_strategy"),
+            rr_key=self._build_domain_rr_key(domains),
+        )
+        enable_prefix = bool(request_config.get("enable_prefix", True))
 
         body = {
             "enablePrefix": enable_prefix,

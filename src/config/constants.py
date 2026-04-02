@@ -46,7 +46,7 @@ class EmailServiceType(str, Enum):
 # ============================================================================
 
 APP_NAME = "OpenAI/Codex CLI 自动注册系统"
-APP_VERSION = "2.0.27"
+APP_VERSION = "2.0.28"
 APP_DESCRIPTION = "自动注册 OpenAI/Codex CLI 账号的系统"
 
 # ============================================================================
@@ -138,6 +138,7 @@ EMAIL_SERVICE_DEFAULTS = {
     "duck_mail": {
         "base_url": "",
         "default_domain": "",
+        "domain_strategy": "round_robin",
         "password_length": 12,
         "timeout": 30,
         "max_retries": 3,
@@ -146,6 +147,7 @@ EMAIL_SERVICE_DEFAULTS = {
         "base_url": "",
         "api_token": "",
         "default_domain": "",
+        "domain_strategy": "round_robin",
         "timeout": 30,
         "max_retries": 3,
         "poll_interval": 3,

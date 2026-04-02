@@ -224,8 +224,16 @@
                             <input type="text" id="custom-api-key" name="api_key" placeholder="API Key">
                         </div>
                         <div class="form-group">
-                            <label for="custom-domain">邮箱域名</label>
-                            <input type="text" id="custom-domain" name="domain" placeholder="example.com">
+                            <label for="custom-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="custom-domain" name="domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="custom-domain-strategy">域名选择策略</label>
+                            <select id="custom-domain-strategy" name="domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                     </div>
                     <!-- TempMail 字段 -->
@@ -239,8 +247,16 @@
                             <input type="password" id="custom-tm-admin-password" name="tm_admin_password" placeholder="x-admin-auth 密码">
                         </div>
                         <div class="form-group">
-                            <label for="custom-tm-domain">邮箱域名</label>
-                            <input type="text" id="custom-tm-domain" name="tm_domain" placeholder="example.com">
+                            <label for="custom-tm-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="custom-tm-domain" name="tm_domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="custom-tm-domain-strategy">域名选择策略</label>
+                            <select id="custom-tm-domain-strategy" name="tm_domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                     </div>
                     <!-- DuckMail 字段 -->
@@ -254,8 +270,16 @@
                             <input type="text" id="custom-dm-api-key" name="dm_api_key" placeholder="dk_xxx">
                         </div>
                         <div class="form-group">
-                            <label for="custom-dm-domain">默认域名</label>
-                            <input type="text" id="custom-dm-domain" name="dm_domain" placeholder="example.com">
+                            <label for="custom-dm-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="custom-dm-domain" name="dm_domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="custom-dm-domain-strategy">域名选择策略</label>
+                            <select id="custom-dm-domain-strategy" name="dm_domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label for="custom-dm-password-length">随机密码长度</label>
@@ -284,8 +308,16 @@
                             <input type="text" id="custom-cm-api-token" name="cm_api_token" placeholder="CloudMail Token">
                         </div>
                         <div class="form-group">
-                            <label for="custom-cm-domain">邮箱域名</label>
-                            <input type="text" id="custom-cm-domain" name="cm_domain" placeholder="example.com">
+                            <label for="custom-cm-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="custom-cm-domain" name="cm_domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="custom-cm-domain-strategy">域名选择策略</label>
+                            <select id="custom-cm-domain-strategy" name="cm_domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                     </div>
                     <div class="form-row">
@@ -341,8 +373,16 @@
                             <small style="color: var(--text-muted);">留空则保持原值不变</small>
                         </div>
                         <div class="form-group">
-                            <label for="edit-custom-domain">邮箱域名</label>
-                            <input type="text" id="edit-custom-domain" name="domain" placeholder="example.com">
+                            <label for="edit-custom-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="edit-custom-domain" name="domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-custom-domain-strategy">域名选择策略</label>
+                            <select id="edit-custom-domain-strategy" name="domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                     </div>
                     <!-- TempMail 字段 -->
@@ -357,8 +397,16 @@
                             <small style="color: var(--text-muted);">留空则保持原值不变</small>
                         </div>
                         <div class="form-group">
-                            <label for="edit-tm-domain">邮箱域名</label>
-                            <input type="text" id="edit-tm-domain" name="tm_domain" placeholder="example.com">
+                            <label for="edit-tm-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="edit-tm-domain" name="tm_domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-tm-domain-strategy">域名选择策略</label>
+                            <select id="edit-tm-domain-strategy" name="tm_domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                     </div>
                     <!-- DuckMail 字段 -->
@@ -373,8 +421,16 @@
                             <small style="color: var(--text-muted);">留空则保持原值不变</small>
                         </div>
                         <div class="form-group">
-                            <label for="edit-dm-domain">默认域名</label>
-                            <input type="text" id="edit-dm-domain" name="dm_domain" placeholder="example.com">
+                            <label for="edit-dm-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="edit-dm-domain" name="dm_domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-dm-domain-strategy">域名选择策略</label>
+                            <select id="edit-dm-domain-strategy" name="dm_domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label for="edit-dm-password-length">随机密码长度</label>
@@ -405,8 +461,16 @@
                             <small style="color: var(--text-muted);">留空则保持原值不变</small>
                         </div>
                         <div class="form-group">
-                            <label for="edit-cm-domain">邮箱域名</label>
-                            <input type="text" id="edit-cm-domain" name="cm_domain" placeholder="example.com">
+                            <label for="edit-cm-domain">邮箱域名（支持多个）</label>
+                            <input type="text" id="edit-cm-domain" name="cm_domain" placeholder="a.com,b.com">
+                            <small style="color: var(--text-muted);">使用英文逗号分隔多个域名</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-cm-domain-strategy">域名选择策略</label>
+                            <select id="edit-cm-domain-strategy" name="cm_domain_strategy">
+                                <option value="round_robin">轮询（推荐）</option>
+                                <option value="random">随机</option>
+                            </select>
                         </div>
                     </div>
                     <div class="form-row">
